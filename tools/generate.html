@@ -1,0 +1,55 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Fairycake Falls – asset generator</title></head>
+<body style="margin:0;background:#333;color:#fff;font:14px sans-serif">
+<p id="log">Generating…</p>
+<script src="paint.js"></script>
+<script src="gen.js"></script>
+<script>
+/* Renders every background layer for every theme and keeps them as WebP data URLs
+   in window.OUT (picked up by tools/build-assets.js). Open with ?theme=0 to render one theme. */
+(async function () {
+  const q = new URLSearchParams(location.search);
+  const GEN = window.GEN;
+  const only = q.has('theme') ? [+q.get('theme')] : GEN.THEMES.map((_, i) => i);
+  const quality = 0.86;
+  const OUT = (window.OUT = { files: {}, manifest: { version: 1, themes: [] } });
+  const log = (m) => { document.getElementById('log').textContent = m; console.log(m); };
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  for (const ti of only) {
+    const T = GEN.THEMES[ti];
+    const seed = 1000 + ti * 100;
+    const jobs = [
+      ['sky', () => GEN.sky(T, seed + 11)],
+      ['far', () => GEN.far(T, seed + 21)],
+      ['sideL', () => GEN.side(T, seed + 31, false)],
+      ['sideR', () => GEN.side(T, seed + 41, true)],
+      ['island', () => GEN.island(T, seed + 7)],
+      ['sea', () => GEN.cloudsea(T, seed + 51)],
+      ['puff0', () => GEN.puff(T, seed + 61, 420)],
+      ['puff1', () => GEN.puff(T, seed + 62, 340)],
+      ['puff2', () => GEN.puff(T, seed + 63, 520)],
+    ];
+    const entry = { key: T.key, name: T.name, files: {}, meta: {} };
+    for (const [name, fn] of jobs) {
+      log('theme ' + ti + ': ' + name);
+      await tick();
+      const res = fn();
+      const file = 't' + ti + '_' + name + '.webp';
+      OUT.files[file] = res.canvas.toDataURL('image/webp', quality);
+      entry.files[name] = file;
+      entry.meta[name] = res.meta;
+      if (res.front) {
+        const ff = 't' + ti + '_' + name + 'Front.webp';
+        OUT.files[ff] = res.front.toDataURL('image/webp', quality);
+        entry.files[name + 'Front'] = ff;
+      }
+    }
+    entry.K = GEN.K;
+    entry.palette = { cloud: T.cloud, fade: T.fade, sky: T.sky.map((s) => s[1]), water: T.water, fall: T.fall, grass: T.grass, rock: T.rock };
+    OUT.manifest.themes[ti] = entry;
+  }
+  log('done');
+  window.DONE = true;
+})();
+</script>
+</body></html>

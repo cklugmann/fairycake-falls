@@ -1,0 +1,9 @@
+# dependencies for the asset generator (npm i -D playwright)
+node_modules/
+package-lock.json
+
+# OS / editor clutter
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp

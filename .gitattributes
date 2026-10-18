@@ -1,0 +1,10 @@
+# keep text files with LF line endings on every OS
+* text=auto eol=lf
+
+# binary assets
+*.webp binary
+*.png  binary
+*.jpg  binary
+*.JPG  binary
+*.jpeg binary
+*.woff2 binary

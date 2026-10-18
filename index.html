@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#ffd5e6">
+  <title>Fairycake Falls</title>
+  <link rel="stylesheet" href="css/font.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="game"></canvas>
+
+    <!-- ===== HUD ===== -->
+    <div id="hud" class="hidden">
+      <div id="scorePill" class="pill">
+        <div class="pill-level">Level <b id="lvl">1</b></div>
+        <div class="pill-score"><svg viewBox="0 0 24 24" class="star"><path d="M12 2.5l2.9 6 6.6.8-4.9 4.6 1.3 6.5L12 17.2l-5.9 3.2 1.3-6.5L2.5 9.3l6.6-.8z"/></svg><b id="score">0</b></div>
+        <div class="pill-bar"><i id="lvlbar"></i></div>
+      </div>
+      <div id="streak" class="streak"><svg viewBox="0 0 24 24" class="streak-ic"><path d="M12 2.5c1.2 3.2 4.8 5.2 4.8 9.6A4.8 4.8 0 0 1 7.2 12c0-1.6.7-2.9 1.6-3.9.2 1.5 1 2.5 2.1 2.9C10.4 7.9 11 5 12 2.5z" fill="#fff3a8" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><path d="M12 21.5a5.6 5.6 0 0 1-5.6-5.6c0-1 .2-1.9.7-2.7a5.4 5.4 0 0 0 9.8 0c.5.8.7 1.7.7 2.7a5.6 5.6 0 0 1-5.6 5.6z" fill="#ffd166" opacity=".9"/></svg><b id="streakX">x1.25</b><span id="streakN">Streak 2</span></div>
+      <button id="pauseBtn" class="round-btn" aria-label="Pause">
+        <svg viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="2"/><rect x="13.5" y="5" width="4" height="14" rx="2"/></svg>
+      </button>
+      <button id="nextBtn" class="next-bubble" aria-label="Swap with next cake">
+        <canvas id="nextCanvas" width="64" height="64"></canvas>
+        <span class="next-label">Next</span>
+        <span class="swap-icon"><svg viewBox="0 0 24 24"><path d="M7 7h9l-2.5-2.5M17 17H8l2.5 2.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </button>
+      <button id="jokerBtn" class="power-btn left gone" aria-label="Magic Cake">
+        <canvas id="jokerIcon" width="64" height="64"></canvas>
+        <span class="badge" id="jokerCount">0</span>
+        <span class="power-label">Magic</span>
+      </button>
+      <button id="wandBtn" class="power-btn right gone" aria-label="Wand">
+        <svg viewBox="0 0 64 64" class="wand">
+          <defs>
+            <linearGradient id="wandStick" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff3fb"/><stop offset="1" stop-color="#d9a7e8"/></linearGradient>
+            <linearGradient id="wandStar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff7b8"/><stop offset="1" stop-color="#ffc83d"/></linearGradient>
+          </defs>
+          <path d="M14 52 L38 28" stroke="#a46fc0" stroke-width="9" stroke-linecap="round"/>
+          <path d="M14 52 L38 28" stroke="url(#wandStick)" stroke-width="5.5" stroke-linecap="round"/>
+          <path d="M44 9l3.6 7.4 8.2 1.2-5.9 5.8 1.4 8.1-7.3-3.8-7.3 3.8 1.4-8.1-5.9-5.8 8.2-1.2z" fill="url(#wandStar)" stroke="#d48a1a" stroke-width="2.2" stroke-linejoin="round"/>
+          <circle cx="23" cy="20" r="2.4" fill="#fff"/><circle cx="53" cy="38" r="2" fill="#fff"/><circle cx="31" cy="12" r="1.5" fill="#fff"/>
+        </svg>
+        <span class="badge" id="wandCount">0</span>
+        <span class="power-label">Wand</span>
+      </button>
+      <div id="banner" class="banner"><div class="banner-title"></div><div class="banner-sub"></div></div>
+      <div id="combo" class="combo"></div>
+      <div id="discover" class="discover"><canvas id="discoverIcon" width="96" height="96"></canvas><div><div class="discover-kicker">New cake!</div><div class="discover-name" id="discoverName"></div></div></div>
+      <div class="coach-wrap"><div id="coach" class="coach"><div class="coach-title"></div><div class="coach-sub"></div><div class="coach-row hidden"></div></div></div>
+      <div class="ladder-wrap"><div id="ladder" class="ladder" aria-label="Cake ladder"></div></div>
+    </div>
+
+    <!-- ===== Title ===== -->
+    <div id="title" class="screen title hidden">
+      <div class="logo-wrap">
+        <svg class="logo" viewBox="0 0 640 400" aria-label="Fairycake Falls">
+          <defs>
+            <linearGradient id="logoFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#ffd0e6"/><stop offset="0.45" stop-color="#ff7fb6"/><stop offset="1" stop-color="#e8438d"/>
+            </linearGradient>
+            <linearGradient id="wingFill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3d0ff"/></linearGradient>
+            <radialGradient id="creamFill" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#efdff5"/></radialGradient>
+            <filter id="logoShadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="7" stdDeviation="6" flood-color="#9c2e6a" flood-opacity="0.35"/></filter>
+          </defs>
+          <!-- Tilly on top -->
+          <g transform="translate(320 78)">
+            <path d="M-38 -6 C-80 -50 -112 -24 -96 4 C-86 22 -56 18 -38 6Z" fill="url(#wingFill)" stroke="#c7a2e0" stroke-width="4"/>
+            <path d="M38 -6 C80 -50 112 -24 96 4 C86 22 56 18 38 6Z" fill="url(#wingFill)" stroke="#c7a2e0" stroke-width="4"/>
+            <ellipse cx="0" cy="22" rx="52" ry="36" fill="url(#creamFill)" stroke="#c9a3d6" stroke-width="4"/>
+            <ellipse cx="0" cy="-10" rx="38" ry="26" fill="url(#creamFill)" stroke="#c9a3d6" stroke-width="4"/>
+            <ellipse cx="3" cy="-34" rx="24" ry="17" fill="url(#creamFill)" stroke="#c9a3d6" stroke-width="4"/>
+            <path d="M-6 -48 Q4 -72 22 -60 Q10 -54 14 -46Z" fill="#fff" stroke="#c9a3d6" stroke-width="4" stroke-linejoin="round"/>
+            <ellipse cx="-17" cy="22" rx="6" ry="8" fill="#3a2230"/><ellipse cx="17" cy="22" rx="6" ry="8" fill="#3a2230"/>
+            <circle cx="-19" cy="18" r="2.6" fill="#fff"/><circle cx="15" cy="18" r="2.6" fill="#fff"/>
+            <ellipse cx="-31" cy="32" rx="8" ry="5" fill="#ff8fab" opacity="0.6"/><ellipse cx="31" cy="32" rx="8" ry="5" fill="#ff8fab" opacity="0.6"/>
+            <path d="M-7 32 Q0 40 7 32" fill="none" stroke="#3a2230" stroke-width="3.5" stroke-linecap="round"/>
+            <path d="M-20 -22 l3 6 6.6 1 -4.8 4.6 1.2 6.6 -6-3.2 -6 3.2 1.2-6.6 -4.8-4.6 6.6-1z" fill="#ffd34d"/>
+          </g>
+          <g filter="url(#logoShadow)" font-family="Fredoka, sans-serif" font-weight="700" text-anchor="middle">
+            <text x="320" y="228" font-size="112" fill="#8e2c63" stroke="#8e2c63" stroke-width="34" stroke-linejoin="round" letter-spacing="1">Fairycake</text>
+            <text x="320" y="228" font-size="112" fill="url(#logoFill)" stroke="#ffffff" stroke-width="16" stroke-linejoin="round" paint-order="stroke" letter-spacing="1">Fairycake</text>
+            <text x="320" y="352" font-size="128" fill="#8e2c63" stroke="#8e2c63" stroke-width="36" stroke-linejoin="round" letter-spacing="2">Falls</text>
+            <text x="320" y="352" font-size="128" fill="url(#logoFill)" stroke="#ffffff" stroke-width="17" stroke-linejoin="round" paint-order="stroke" letter-spacing="2">Falls</text>
+          </g>
+          <g fill="#ffffff">
+            <path d="M120 120 l4 10 10 4 -10 4 -4 10 -4-10 -10-4 10-4z"/>
+            <path d="M548 150 l3 8 8 3 -8 3 -3 8 -3-8 -8-3 8-3z"/>
+            <path d="M560 290 l3 7 7 3 -7 3 -3 7 -3-7 -7-3 7-3z" opacity="0.8"/>
+            <path d="M90 300 l3 7 7 3 -7 3 -3 7 -3-7 -7-3 7-3z" opacity="0.8"/>
+          </g>
+        </svg>
+      </div>
+      <div class="title-bottom">
+        <div class="goal-card">
+          <div id="titleChain" class="chain"></div>
+          <div class="goal-text">Flick matching cakes together<br>to bake bigger and bigger ones!</div>
+        </div>
+        <button id="playBtn" class="btn btn-play"><span class="arrow">&#10148;</span> Play <span class="arrow flip">&#10148;</span></button>
+        <div class="title-row">
+          <button id="howBtn" class="btn btn-soft">How to play</button>
+          <button id="bookBtn" class="btn btn-soft">Cake Book</button>
+        </div>
+        <div class="title-best">Best <b id="bestTitle">0</b></div>
+      </div>
+      <button id="soundBtnTitle" class="round-btn corner" aria-label="Sound"></button>
+    </div>
+
+    <!-- ===== How to play ===== -->
+    <div id="how" class="screen modal hidden">
+      <div class="card">
+        <h2><span class="leaf">&#10047;</span> How to play <span class="leaf">&#10047;</span></h2>
+        <div class="step">
+          <div class="num">1</div><canvas class="step-icon" data-icon="aim" width="88" height="88"></canvas>
+          <div class="step-text"><b>Pull back &amp; let go.</b> Like a slingshot: the cake flies the other way. Pull further for more power – or just tap where it should go.</div>
+        </div>
+        <div class="step">
+          <div class="num">2</div><canvas class="step-icon" data-icon="merge" width="88" height="88"></canvas>
+          <div class="step-text"><b>Same cakes merge.</b> Two identical cakes that touch become a bigger one. A pink heart in the preview means: match!</div>
+        </div>
+        <div class="step">
+          <div class="num">3</div><canvas class="step-icon" data-icon="ring" width="88" height="88"></canvas>
+          <div class="step-text"><b>Keep the ring clear.</b> Cakes drift to the middle while the pond slowly turns. A cake outside the ring for 4 seconds makes the pond overflow.</div>
+        </div>
+        <div class="tips">
+          <div><b>Goal:</b> score high – bigger cakes and combos score more.</div>
+          <div><b>Hot streak:</b> merge with every flick to multiply your points.</div>
+          <div><b>Next:</b> tap it to swap your two cakes.</div>
+          <div><b>Magic Cake &amp; Wand:</b> earned on level-ups.</div>
+          <div><b>Fairy Bubbles:</b> hit them for gifts.</div>
+        </div>
+        <button id="replayTutBtn" class="link-btn">Show me the tour again</button>
+        <button class="btn btn-play small close-btn" data-close="how">Got it!</button>
+      </div>
+    </div>
+
+    <!-- ===== Cake book ===== -->
+    <div id="book" class="screen modal hidden">
+      <div class="card">
+        <h2><span class="leaf">&#10047;</span> Cake Book <span class="leaf">&#10047;</span></h2>
+        <p class="sub">From tiny to fairytale!</p>
+        <div id="bookGrid" class="book-grid"></div>
+        <button class="btn btn-play small close-btn" data-close="book">Close</button>
+      </div>
+    </div>
+
+    <!-- ===== Pause ===== -->
+    <div id="pause" class="screen modal hidden">
+      <div class="card narrow">
+        <h2>Paused</h2>
+        <button id="resumeBtn" class="btn btn-play">Resume</button>
+        <div class="toggles">
+          <button id="musicBtn" class="btn btn-soft toggle"></button>
+          <button id="sfxBtn" class="btn btn-soft toggle"></button>
+        </div>
+        <button id="pauseHowBtn" class="btn btn-soft">How to play</button>
+        <button id="restartBtn" class="btn btn-soft">Restart</button>
+        <button id="menuBtn" class="btn btn-soft">Menu</button>
+      </div>
+    </div>
+
+    <!-- ===== Game over ===== -->
+    <div id="over" class="screen modal hidden">
+      <div class="card">
+        <h2 class="over-title">The pond overflowed!</h2>
+        <p class="over-sub">A cake stayed outside the ring too long.</p>
+        <div id="newBest" class="ribbon hidden">New best!</div>
+        <div class="over-score"><span>Score</span><b id="overScore">0</b></div>
+        <div class="over-best">Best <b id="overBest">0</b></div>
+        <div class="over-stats">
+          <div class="stat"><canvas id="overCake" width="80" height="80"></canvas><div><small>Biggest cake</small><b id="overCakeName"></b></div></div>
+          <div class="stat-row">
+            <div><small>Level</small><b id="overLevel">1</b></div>
+            <div><small>Merges</small><b id="overMerges">0</b></div>
+            <div><small>Best combo</small><b id="overCombo">0</b></div>
+          </div>
+        </div>
+        <button id="againBtn" class="btn btn-play">Play again</button>
+        <button id="overMenuBtn" class="btn btn-soft">Menu</button>
+      </div>
+    </div>
+
+    <!-- ===== Loading ===== -->
+    <div id="loading" class="screen loading">
+      <div class="load-box">
+        <div class="load-title">Fairycake Falls</div>
+        <div class="load-bar"><i id="loadBar"></i></div>
+        <div class="load-text">Baking the clouds…</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/core.js"></script>
+  <script src="assets/manifest.js"></script>
+  <script src="js/physics.js"></script>
+  <script src="js/cakes.js"></script>
+  <script src="js/scene.js"></script>
+  <script src="js/fx.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,434 @@
+/* Fairycake Falls – DOM UI: HUD, coach tips, cake ladder, menus, banners, cake book. */
+(function () {
+  'use strict';
+  const FC = window.FC;
+  const $ = (id) => document.getElementById(id);
+  const G = () => FC.Game;
+  const TIERS = FC.Cakes.TIERS;
+  const MAX = FC.Cakes.MAX_TIER;
+
+  const SPEAKER_ON = '<svg viewBox="0 0 24 24"><path d="M4 9h3.5L12 5v14l-4.5-4H4z" fill="#fff"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>';
+  const SPEAKER_OFF = '<svg viewBox="0 0 24 24"><path d="M4 9h3.5L12 5v14l-4.5-4H4z" fill="#fff"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>';
+  const HEART = '<svg class="ic-heart" viewBox="0 0 24 24"><path d="M12 21C5 15.5 2 12.3 2 8.6 2 5.6 4.4 3.3 7.3 3.3c1.9 0 3.6 1 4.7 2.6 1.1-1.6 2.8-2.6 4.7-2.6 2.9 0 5.3 2.3 5.3 5.3 0 3.7-3 6.9-10 12.4z" fill="#ff6fa8" stroke="#fff" stroke-width="2"/></svg>';
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fmt = (s) => esc(s).replace(/\{heart\}/g, HEART);
+
+  function iconCanvas(tier, size) {
+    const c = document.createElement('canvas');
+    c.style.width = c.style.height = size + 'px';
+    FC.Cakes.drawIcon(c, tier, { w: size, h: size });
+    return c;
+  }
+
+  const UI = {
+    timers: {},
+
+    init() {
+      const click = (id, fn) => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          FC.Audio.init();
+          FC.Audio.click();
+          fn(e);
+        });
+      };
+      click('playBtn', () => G().newGame());
+      click('howBtn', () => this.open('how'));
+      click('bookBtn', () => { this.buildBook(); this.open('book'); });
+      click('pauseBtn', () => this.pause());
+      click('resumeBtn', () => this.resume());
+      click('restartBtn', () => { this.close('pause'); G().newGame(); });
+      click('menuBtn', () => { this.close('pause'); this.showTitle(); });
+      click('pauseHowBtn', () => this.open('how'));
+      click('againBtn', () => { this.close('over'); G().newGame(); });
+      click('overMenuBtn', () => { this.close('over'); this.showTitle(); });
+      click('musicBtn', () => { FC.Audio.setMusic(!FC.Audio.musicOn); this.refreshToggles(); });
+      click('sfxBtn', () => { FC.Audio.setSfx(!FC.Audio.sfxOn); this.refreshToggles(); });
+      click('replayTutBtn', () => {
+        FC.store.set('coach', 0);
+        $('replayTutBtn').textContent = 'The tour starts with your next game';
+      });
+      click('soundBtnTitle', () => {
+        const on = !(FC.Audio.musicOn || FC.Audio.sfxOn);
+        FC.Audio.setMusic(on);
+        FC.Audio.setSfx(on);
+        this.refreshToggles();
+      });
+      click('nextBtn', () => G().swap());
+      click('jokerBtn', () => G().useJoker());
+      click('wandBtn', () => G().toggleWand());
+      document.querySelectorAll('[data-close]').forEach((el) => {
+        el.addEventListener('click', () => { FC.Audio.click(); this.close(el.getAttribute('data-close')); });
+      });
+      // HUD buttons must not start a flick on the canvas underneath
+      ['nextBtn', 'jokerBtn', 'wandBtn', 'pauseBtn'].forEach((id) => {
+        $(id).addEventListener('pointerdown', (e) => e.stopPropagation());
+      });
+      FC.Cakes.drawIcon($('jokerIcon'), 0, { w: 52, h: 52 });
+      this.buildLadder();
+      this.drawHowIcons();
+      this.drawTitleChain();
+      this.refreshToggles();
+      $('bestTitle').textContent = G().best;
+      this.layout();
+    },
+
+    layout() {
+      const nb = $('nextBtn');
+      if (!nb || !G().nextCenter) return;
+      const n = G().nextCenter();
+      nb.style.width = nb.style.height = n.size + 'px';
+      const cv = $('nextCanvas');
+      cv.style.width = cv.style.height = Math.round(n.size * 0.84) + 'px';
+      cv.style.left = Math.round(n.size * 0.04) + 'px';
+      cv.style.top = Math.round(n.size * 0.02) + 'px';
+      nb.style.left = n.x + 'px';
+      nb.style.top = n.y + 'px';
+      this.updateNext();
+      const lr = $('ladder').getBoundingClientRect();
+      this.ladderRect = lr.width ? { left: lr.left, top: lr.top, right: lr.right, bottom: lr.bottom } : null;
+    },
+
+    // the tutorial hand must never hide behind the ladder: fade the ladder while they overlap
+    setHandOver(on) {
+      if (this.handOver === on) return;
+      this.handOver = on;
+      document.querySelector('.ladder-wrap').classList.toggle('dim', on);
+    },
+
+    open(id) {
+      $(id).classList.remove('hidden');
+      if (id === 'how') $('replayTutBtn').textContent = 'Show me the tour again';
+    },
+    close(id) { $(id).classList.add('hidden'); },
+
+    showTitle() {
+      ['hud', 'pause', 'over', 'how', 'book'].forEach((id) => $(id).classList.add('hidden'));
+      $('title').classList.remove('hidden');
+      $('bestTitle').textContent = G().best;
+      this.coachHide();
+      G().toTitle();
+    },
+
+    onNewGame() {
+      ['title', 'pause', 'over', 'how', 'book'].forEach((id) => $(id).classList.add('hidden'));
+      $('hud').classList.remove('hidden');
+      $('hud').classList.remove('danger');
+      this.setScore(0);
+      this.setLevel(1, 0);
+      this.layout();
+      this.updatePowers();
+      this.setLadder(G().maxTier);
+      this.setStreak(0);
+      this.coachHide();
+      G().overShown = false;
+    },
+
+    pause() {
+      if (G().state !== 'playing') return;
+      G().state = 'paused';
+      G().cancelAim();
+      this.refreshToggles();
+      this.open('pause');
+    },
+    resume() {
+      if (G().state !== 'paused') return;
+      this.close('pause');
+      this.close('how');
+      G().state = 'playing';
+      G().last = 0;
+    },
+
+    onGameOver() {
+      this.coachHide();
+      $('hud').classList.remove('danger');
+    },
+
+    showOver(st) {
+      $('overScore').textContent = st.score;
+      $('overBest').textContent = st.best;
+      $('newBest').classList.toggle('hidden', !st.newBest);
+      $('overLevel').textContent = st.level;
+      $('overMerges').textContent = st.merges;
+      $('overCombo').textContent = 'x' + Math.max(1, st.combo);
+      $('overCakeName').textContent = TIERS[st.maxTier].name;
+      FC.Cakes.drawIcon($('overCake'), st.maxTier, { w: 60, h: 60 });
+      this.open('over');
+    },
+
+    refreshToggles() {
+      $('musicBtn').textContent = 'Music: ' + (FC.Audio.musicOn ? 'on' : 'off');
+      $('sfxBtn').textContent = 'Sound: ' + (FC.Audio.sfxOn ? 'on' : 'off');
+      $('soundBtnTitle').innerHTML = FC.Audio.musicOn || FC.Audio.sfxOn ? SPEAKER_ON : SPEAKER_OFF;
+    },
+
+    setScore(n) {
+      $('score').textContent = n;
+      const p = $('score').parentElement;
+      p.classList.remove('bump');
+      void p.offsetWidth;
+      p.classList.add('bump');
+    },
+
+    setLevel(lv, frac) {
+      $('lvl').textContent = lv;
+      $('lvlbar').style.width = Math.round(FC.clamp(frac, 0, 1) * 100) + '%';
+    },
+
+    updateNext(pulse) {
+      const q = G().queue;
+      if (!q || q.length < 2) return;
+      FC.Cakes.drawIcon($('nextCanvas'), q[1], { w: 56, h: 56 });
+      if (pulse) {
+        const b = $('nextBtn');
+        b.classList.remove('pulse');
+        void b.offsetWidth;
+        b.classList.add('pulse');
+      }
+    },
+
+    // power-up buttons only appear once you own one
+    updatePowers(flash) {
+      const g = G();
+      $('jokerCount').textContent = g.jokers;
+      $('wandCount').textContent = g.wands;
+      const jb = $('jokerBtn'), wb = $('wandBtn');
+      const jWas = !jb.classList.contains('gone'), wWas = !wb.classList.contains('gone');
+      jb.classList.toggle('gone', g.jokers <= 0);
+      wb.classList.toggle('gone', g.wands <= 0 && !g.wandMode);
+      wb.classList.toggle('active', !!g.wandMode);
+      for (const [b, was] of [[jb, jWas], [wb, wWas]]) {
+        if (b.classList.contains('gone')) continue;
+        if (flash || !was) {
+          b.classList.remove('flash');
+          void b.offsetWidth;
+          b.classList.add('flash');
+        }
+      }
+    },
+
+    banner(title, sub) {
+      const b = $('banner');
+      b.querySelector('.banner-title').textContent = title;
+      b.querySelector('.banner-sub').textContent = sub || '';
+      b.classList.remove('show');
+      void b.offsetWidth;
+      b.classList.add('show');
+    },
+
+    combo(n) {
+      const c = $('combo');
+      const words = ['Sweet!', 'Yummy!', 'Delicious!', 'Sugar Rush!'];
+      c.textContent = words[Math.min(words.length - 1, n - 3)] + ' x' + n;
+      c.classList.remove('show');
+      void c.offsetWidth;
+      c.classList.add('show');
+    },
+
+    discover(tier) {
+      const d = $('discover');
+      $('discoverName').textContent = TIERS[tier].name;
+      FC.Cakes.drawIcon($('discoverIcon'), tier, { w: 48, h: 48 });
+      d.classList.add('show');
+      clearTimeout(this.timers.disc);
+      this.timers.disc = setTimeout(() => d.classList.remove('show'), 2600);
+    },
+
+    // ---------- coach: one short tip at a time ----------
+    coach(title, sub, opts) {
+      const o = opts || {};
+      const el = $('coach');
+      el.querySelector('.coach-title').innerHTML = fmt(title);
+      const se = el.querySelector('.coach-sub');
+      se.innerHTML = sub ? fmt(sub) : '';
+      se.classList.toggle('hidden', !sub);
+      const row = el.querySelector('.coach-row');
+      row.innerHTML = '';
+      const sym = (t) => { const s = document.createElement('span'); s.className = 'sym'; s.textContent = t; row.appendChild(s); };
+      if (o.eq) {
+        row.appendChild(iconCanvas(o.eq[0], 34)); sym('+');
+        row.appendChild(iconCanvas(o.eq[1], 34)); sym('=');
+        row.appendChild(iconCanvas(o.eq[2], 42));
+      } else if (o.chain) {
+        [1, 2, 3, 4].forEach((t, i) => { row.appendChild(iconCanvas(t, 24 + i * 3)); sym('›'); });
+        sym('…'); sym('›');
+        row.appendChild(iconCanvas(MAX, 44));
+      }
+      row.classList.toggle('hidden', !o.eq && !o.chain);
+      el.classList.remove('show');
+      void el.offsetWidth;
+      el.classList.add('show');
+      clearTimeout(this.timers.coach);
+      if (o.time) this.timers.coach = setTimeout(() => this.coachHide(), o.time);
+    },
+    coachHide() {
+      clearTimeout(this.timers.coach);
+      $('coach').classList.remove('show');
+    },
+
+    // ---------- cake ladder: the goal, always in view ----------
+    buildLadder() {
+      const L = $('ladder');
+      L.innerHTML = '';
+      for (let t = 1; t <= MAX; t++) {
+        const d = document.createElement('div');
+        d.className = 'rung';
+        d.setAttribute('data-t', t);
+        d.title = TIERS[t].name;
+        d.appendChild(iconCanvas(t, Math.round(19 + (t - 1) * 1.45)));
+        L.appendChild(d);
+      }
+    },
+    setLadder(maxTier, newTier) {
+      document.querySelectorAll('#ladder .rung').forEach((r) => {
+        const t = +r.getAttribute('data-t');
+        r.classList.toggle('got', t <= maxTier);
+        r.classList.toggle('top', t === maxTier);
+        if (t === newTier) {
+          r.classList.remove('new');
+          void r.offsetWidth;
+          r.classList.add('new');
+        }
+      });
+    },
+    pulseLadder() {
+      const L = $('ladder');
+      L.classList.remove('pulse');
+      void L.offsetWidth;
+      L.classList.add('pulse');
+    },
+
+    // hot streak badge (n >= 2 shows it, 0 hides it; lost = little shake before it fades)
+    setStreak(n, mult, lost) {
+      const el = $('streak');
+      if (n >= 2) {
+        $('streakX').textContent = 'x' + (Math.round(mult * 100) / 100);
+        $('streakN').textContent = 'Streak ' + n;
+        el.classList.remove('lost', 'bump');
+        void el.offsetWidth;
+        el.classList.add('show', 'bump');
+      } else if (lost) {
+        el.classList.remove('bump');
+        el.classList.add('lost');
+        clearTimeout(this.timers.streak);
+        this.timers.streak = setTimeout(() => el.classList.remove('show', 'lost'), 500);
+      } else {
+        el.classList.remove('show', 'bump', 'lost');
+      }
+    },
+
+    setDanger(on) {
+      $('hud').classList.toggle('danger', on);
+    },
+
+    buildBook() {
+      const grid = $('bookGrid');
+      grid.innerHTML = '';
+      const disc = G().discovered;
+      const order = [];
+      for (let t = 1; t <= MAX; t++) order.push(t);
+      order.push(0);
+      for (const t of order) {
+        const known = t === 0 || disc.indexOf(t) >= 0;
+        const item = document.createElement('div');
+        item.className = 'book-item' + (known ? '' : ' locked');
+        const cv = document.createElement('canvas');
+        cv.width = 72; cv.height = 72;
+        item.appendChild(cv);
+        const nm = document.createElement('div');
+        nm.className = 'nm';
+        nm.textContent = known ? TIERS[t].name : '???';
+        item.appendChild(nm);
+        const tr = document.createElement('div');
+        tr.className = 'tier';
+        tr.textContent = t === 0 ? 'Power-up' : 'Tier ' + t;
+        item.appendChild(tr);
+        grid.appendChild(item);
+        FC.Cakes.drawIcon(cv, t, known ? { w: 72, h: 72 } : { w: 72, h: 72, silhouette: '#e3cfe0' });
+      }
+    },
+
+    // little "A + A = B" strip on the title screen
+    drawTitleChain() {
+      const row = $('titleChain');
+      if (!row) return;
+      row.innerHTML = '';
+      const sym = (t) => { const s = document.createElement('span'); s.className = 'sym'; s.textContent = t; row.appendChild(s); };
+      row.appendChild(iconCanvas(1, 26)); sym('+'); row.appendChild(iconCanvas(1, 26)); sym('=');
+      row.appendChild(iconCanvas(2, 31)); sym('…'); row.appendChild(iconCanvas(MAX, 40));
+    },
+
+    drawHowIcons() {
+      document.querySelectorAll('.step-icon').forEach((cv) => {
+        const kind = cv.getAttribute('data-icon');
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const W = 64, H = 64;
+        cv.width = W * dpr; cv.height = H * dpr;
+        const ctx = cv.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const icon = (tier, x, y, s) => {
+          const c = document.createElement('canvas');
+          FC.Cakes.drawIcon(c, tier, { w: s, h: s });
+          ctx.drawImage(c, x - s / 2, y - s / 2, s, s);
+        };
+        if (kind === 'aim') {
+          // dotted path forward
+          ctx.fillStyle = '#ff6fa8';
+          for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(30, 22 - i * 6, 2.2, 0, FC.TAU); ctx.fill(); }
+          // sling posts + ribbon pulled back
+          ctx.lineCap = 'round';
+          ctx.strokeStyle = '#ff9cc8';
+          ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(12, 34); ctx.lineTo(30, 50); ctx.lineTo(48, 34); ctx.stroke();
+          ctx.strokeStyle = '#c4588f';
+          ctx.lineWidth = 4;
+          ctx.beginPath(); ctx.moveTo(12, 33); ctx.lineTo(12, 46); ctx.moveTo(48, 33); ctx.lineTo(48, 46); ctx.stroke();
+          icon(3, 30, 40, 26);
+          // pull arrow
+          ctx.strokeStyle = '#8f6be6';
+          ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(56, 40); ctx.lineTo(56, 58); ctx.moveTo(52, 54); ctx.lineTo(56, 59); ctx.lineTo(60, 54); ctx.stroke();
+        } else if (kind === 'merge') {
+          icon(1, 13, 22, 26);
+          icon(1, 31, 22, 26);
+          ctx.fillStyle = '#ff6fa8';
+          FC.heartPath(ctx, 22, 10, 5);
+          ctx.fill();
+          ctx.strokeStyle = '#b99cf0';
+          ctx.lineWidth = 3;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(22, 36); ctx.lineTo(22, 44); ctx.moveTo(18, 41); ctx.lineTo(22, 45); ctx.lineTo(26, 41);
+          ctx.stroke();
+          icon(2, 44, 48, 32);
+        } else {
+          ctx.beginPath();
+          ctx.ellipse(32, 36, 28, 20, 0, 0, FC.TAU);
+          ctx.fillStyle = '#7bdbe8';
+          ctx.fill();
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.ellipse(32, 36, 21, 15, 0, 0, FC.TAU);
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+          ctx.setLineDash([]);
+          icon(4, 50, 22, 26);
+          ctx.beginPath();
+          ctx.arc(56, 8, 7, 0, FC.TAU);
+          ctx.fillStyle = '#ff4f86';
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = '700 10px Fredoka, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('3', 56, 8.5);
+        }
+      });
+    },
+  };
+
+  FC.UI = UI;
+})();
