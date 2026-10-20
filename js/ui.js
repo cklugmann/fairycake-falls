@@ -1,4 +1,4 @@
-/* Fairycake Falls – DOM UI: HUD, coach tips, cake ladder, menus, banners, cake book. */
+/* Fairycake Falls – DOM UI: HUD, coach tips, menus, banners, the Cake Book (also mid-game). */
 (function () {
   'use strict';
   const FC = window.FC;
@@ -36,7 +36,9 @@
       };
       click('playBtn', () => G().newGame());
       click('howBtn', () => this.open('how'));
-      click('bookBtn', () => { this.buildBook(); this.open('book'); });
+      click('bookBtn', () => this.openBook());
+      click('bookHud', () => this.openBook());
+      click('pauseBookBtn', () => this.openBook());
       click('pauseBtn', () => this.pause());
       click('resumeBtn', () => this.resume());
       click('restartBtn', () => { this.close('pause'); G().newGame(); });
@@ -63,11 +65,10 @@
         el.addEventListener('click', () => { FC.Audio.click(); this.close(el.getAttribute('data-close')); });
       });
       // HUD buttons must not start a flick on the canvas underneath
-      ['nextBtn', 'jokerBtn', 'wandBtn', 'pauseBtn'].forEach((id) => {
+      ['nextBtn', 'jokerBtn', 'wandBtn', 'pauseBtn', 'bookHud'].forEach((id) => {
         $(id).addEventListener('pointerdown', (e) => e.stopPropagation());
       });
       FC.Cakes.drawIcon($('jokerIcon'), 0, { w: 52, h: 52 });
-      this.buildLadder();
       this.drawHowIcons();
       this.drawTitleChain();
       this.refreshToggles();
@@ -87,22 +88,45 @@
       nb.style.left = n.x + 'px';
       nb.style.top = n.y + 'px';
       this.updateNext();
-      const lr = $('ladder').getBoundingClientRect();
-      this.ladderRect = lr.width ? { left: lr.left, top: lr.top, right: lr.right, bottom: lr.bottom } : null;
+      const br = $('bookHud').getBoundingClientRect();
+      this.bookRect = br.width ? { left: br.left, top: br.top, right: br.right, bottom: br.bottom } : null;
     },
 
-    // the tutorial hand must never hide behind the ladder: fade the ladder while they overlap
+    // the tutorial hand must never hide behind the Cake Book pill: fade the pill while they overlap
     setHandOver(on) {
       if (this.handOver === on) return;
       this.handOver = on;
-      document.querySelector('.ladder-wrap').classList.toggle('dim', on);
+      $('bookHud').classList.toggle('dim', on);
     },
 
     open(id) {
       $(id).classList.remove('hidden');
       if (id === 'how') $('replayTutBtn').textContent = 'Show me the tour again';
     },
-    close(id) { $(id).classList.add('hidden'); },
+    close(id) {
+      $(id).classList.add('hidden');
+      if (id === 'book') {
+        if (this.bookFromGame) { this.bookFromGame = false; this.resume(); }
+        else if (this.bookFromPause) { this.bookFromPause = false; this.open('pause'); }
+      }
+    },
+
+    // the Cake Book: from the title, from the pause menu, or straight out of the game (which pauses meanwhile)
+    openBook() {
+      const g = G();
+      if (g.state === 'playing') {
+        g.state = 'paused';
+        g.cancelAim();
+        this.bookFromGame = true;
+      } else if (!$('pause').classList.contains('hidden')) {
+        // from the pause menu: the menu steps aside and comes back when the book closes
+        this.bookFromPause = true;
+        $('pause').classList.add('hidden');
+      }
+      this.buildBook();
+      $('bookHud').classList.remove('new');
+      this.open('book');
+    },
 
     showTitle() {
       ['hud', 'pause', 'over', 'how', 'book'].forEach((id) => $(id).classList.add('hidden'));
@@ -120,7 +144,7 @@
       this.setStage(1, 0, G().stageGoal);
       this.layout();
       this.updatePowers();
-      this.setLadder(G().maxTier);
+      this.setBook();
       this.setStreak(0);
       this.coachHide();
       G().overShown = false;
@@ -135,8 +159,11 @@
     },
     resume() {
       if (G().state !== 'paused') return;
+      this.bookFromGame = false;
+      this.bookFromPause = false;
       this.close('pause');
       this.close('how');
+      this.close('book');
       G().state = 'playing';
       G().last = 0;
     },
@@ -285,36 +312,24 @@
       $('coach').classList.remove('show');
     },
 
-    // ---------- cake ladder: the goal, always in view ----------
-    buildLadder() {
-      const L = $('ladder');
-      L.innerHTML = '';
-      for (let t = 1; t <= MAX; t++) {
-        const d = document.createElement('div');
-        d.className = 'rung';
-        d.setAttribute('data-t', t);
-        d.title = TIERS[t].name;
-        d.appendChild(iconCanvas(t, Math.round(19 + (t - 1) * 1.45)));
-        L.appendChild(d);
-      }
+    // ---------- the Cake Book pill: how many cakes are in the book, and a "New!" when one was just added ----------
+    setBook() {
+      const disc = G().discovered || [1];
+      $('bookCount').textContent = disc.filter((t) => t >= 1 && t <= MAX).length + '/' + MAX;
     },
-    setLadder(maxTier, newTier) {
-      document.querySelectorAll('#ladder .rung').forEach((r) => {
-        const t = +r.getAttribute('data-t');
-        r.classList.toggle('got', t <= maxTier);
-        r.classList.toggle('top', t === maxTier);
-        if (t === newTier) {
-          r.classList.remove('new');
-          void r.offsetWidth;
-          r.classList.add('new');
-        }
-      });
+    // a cake was discovered for the first time: the pill shows "New!" until the book is opened
+    markNewCake() {
+      this.setBook();
+      const b = $('bookHud');
+      b.classList.remove('new');
+      void b.offsetWidth;
+      b.classList.add('new');
     },
-    pulseLadder() {
-      const L = $('ladder');
-      L.classList.remove('pulse');
-      void L.offsetWidth;
-      L.classList.add('pulse');
+    pulseBook() {
+      const b = $('bookHud');
+      b.classList.remove('pulse');
+      void b.offsetWidth;
+      b.classList.add('pulse');
     },
 
     // hot streak badge (n >= 2 shows it, 0 hides it; lost = little shake before it fades)
@@ -340,17 +355,27 @@
       $('hud').classList.toggle('danger', on);
     },
 
+    // every cake with its name once you have baked it; the ones of this run are marked, a first-time find glows
     buildBook() {
+      const g = G();
       const grid = $('bookGrid');
       grid.innerHTML = '';
-      const disc = G().discovered;
+      const disc = g.discovered || [1];
+      const inRun = g.state === 'playing' || g.state === 'paused' || g.state === 'over';
+      const runNew = (inRun && g.runNew) || [];
+      const found = disc.filter((t) => t >= 1 && t <= MAX).length;
+      let sub = found >= MAX ? 'All ' + MAX + ' cakes baked – from tiny to fairytale!' : found + ' of ' + MAX + ' cakes baked';
+      if (inRun && g.maxTier >= 2) sub += ' · this run: up to the ' + TIERS[g.maxTier].name;
+      $('bookSub').textContent = sub;
       const order = [];
       for (let t = 1; t <= MAX; t++) order.push(t);
       order.push(0);
       for (const t of order) {
         const known = t === 0 || disc.indexOf(t) >= 0;
+        const fresh = runNew.indexOf(t) >= 0;
+        const run = inRun && t >= 1 && t <= g.maxTier;
         const item = document.createElement('div');
-        item.className = 'book-item' + (known ? '' : ' locked');
+        item.className = 'book-item' + (known ? '' : ' locked') + (fresh ? ' fresh' : '') + (run ? ' run' : '');
         const cv = document.createElement('canvas');
         cv.width = 72; cv.height = 72;
         item.appendChild(cv);
@@ -360,8 +385,14 @@
         item.appendChild(nm);
         const tr = document.createElement('div');
         tr.className = 'tier';
-        tr.textContent = t === 0 ? 'Power-up' : 'Tier ' + t;
+        tr.textContent = t === 0 ? 'Power-up' : known ? 'Tier ' + t : 'Tier ' + t + ' · keep baking!';
         item.appendChild(tr);
+        if (fresh || run) {
+          const tag = document.createElement('div');
+          tag.className = 'tag';
+          tag.textContent = fresh ? 'New!' : 'this run';
+          item.appendChild(tag);
+        }
         grid.appendChild(item);
         FC.Cakes.drawIcon(cv, t, known ? { w: 72, h: 72 } : { w: 72, h: 72, silhouette: '#e3cfe0' });
       }

@@ -1,4 +1,4 @@
-# Fairycake Falls – Game Design (prototype v0.6)
+# Fairycake Falls – Game Design (prototype v0.6.1)
 
 ## Pitch
 A cosy, endless flick-and-merge game. You flick cakes from a little slingshot
@@ -100,7 +100,7 @@ v0.2 answered "I don't get the game, the controls or the goal". It added:
 
 - **One fixed slingshot:** in v0.1 the cake jumped around the rim depending on where you pressed.
 - **A guided first game:** nothing had shown that identical cakes merge or what the ring means.
-- **An always-visible cake ladder:** it shows the whole goal at a glance.
+- **An always-visible cake ladder:** it shows the whole goal at a glance. (Replaced in v0.6.1 by the Cake Book pill – see below.)
 - **Less clutter:** the cake to play with was tiny, while "Next" and the power-ups were big.
 
 ## Controls (mouse and touch are identical)
@@ -151,13 +151,17 @@ v0.2 answered "I don't get the game, the controls or the goal". It added:
   2. **Show the gesture:** a cartoon hand shows press, pull back and release, and the coach card says "Pull the cake back & let go!".
   3. **While aiming:** "That's a match! ♥ Let go to merge them" or "Aim at the same cake – a ♥ means: match!".
   4. **First merge:** "Yum! Same cakes merge" with *A + A = B*.
-  5. **Bigger goal:** "Bake bigger and bigger cakes – all the way up to the Royal Fairycake!" with a mini chain; the cake ladder pulses.
+  5. **Bigger goal:** "Bake bigger and bigger cakes – all the way up to the Royal Fairycake!" with a mini chain; the Cake Book pill pulses.
   6. **Water:** "Read the water – the current at the edge carries slow cakes round; the calm pool inside the ring draws them in", with the foam brightened for a moment.
   7. **Order:** "Fill the order: 5 merges – then the pond whirls and the next stage begins"; the stage pill pulses.
   8. **Ring:** after 6 shots, or when a cake nears the ring, the ring glows pink and the coach says "Keep the cakes in the calm water!".
   9. **A miss:** if the first flick misses, the coach says "So close! Hit a cake that looks the same" and the hand comes back.
 - **Later games:** the hand appears again if you don't flick within 2.5 s of the start, or after 14 s of idling, or when you tap the cake or the water. The first flick of a game whose preview rides the current round to the cluster gets a "Riding the current ♥" tip.
-- **Cake ladder:** all 11 cakes sit in a strip at the bottom. The cakes this run has reached are lit, the biggest one is highlighted, and a newly reached cake pops.
+- **Cake Book (v0.6.1, replaces the ladder):** playtesters wanted to *see what they have unlocked, with names*, and the strip of
+  tiny icons at the bottom told them nothing. Now a pill at the bottom ("Cake Book 7/11") opens the book straight out of the game
+  (the pond pauses): every cake ever baked with its name, the ones of this run marked "this run", a first-time find glowing with
+  "New!" (the pill shows "New!" until the book is opened), unknown cakes as silhouettes with "keep baking!". The same book opens
+  from the title and the pause menu. Future work, as a vision: a collection rather than a strict ladder, with many more cakes.
 - **Power-ups:** the buttons stay hidden until you own one. The first Magic Cake and the first Wand are each explained once.
 - **Warnings and game over:** the first three times the pond gets dangerously full, the coach says "Too full! Merge cakes to make room". The game-over card explains why the game ended.
 
@@ -273,15 +277,28 @@ one cake of every tier 1–11 reaches 94–100 % of the Royal's ring (848).
 - **Backgrounds** are pre-painted WebP layers: sky, castle island, side islands, main island (back and front), cloud sea and cloud puffs, for four worlds. The deterministic generator in `tools/` produces them. At runtime the layers are composed once per screen size, and only the moving parts (waterfalls, water glints, the whirlpool arms, drifting clouds, sparkles) are animated. The whirlpool arms turn at exactly the physics rate.
 
 ## Audio
-Everything is synthesised with Web Audio:
+Everything is synthesised with Web Audio (`js/audio.js`), no audio files:
 
+- **Music – "Tilly's Lullaby" (v0.6.1):** a composed 16-bar tune in G major, 6/8 at a rocking 55 bpm (dotted quarter),
+  looped with variation. Chords: Gmaj7 · Em7 · Cmaj7 · D7sus/D7 · Gmaj7 · Bm7 · Cmaj7 · Am7 · G/B · Cmaj7#11 (the lydian
+  sparkle) · D7sus · Gmaj7. Instruments: a **music box** (sine fundamental with quickly fading partials at 2, 3, 4.16 and
+  5.43× plus the click of the pin), a **harp** rolling over the four chord tones (a triangle whose brightness closes after
+  the pluck), a warm **pad** (two detuned triangles per note under a slowly breathing low-pass, spread across the stereo
+  field), a soft **bass** on the root, and on every other round a little **flute** (sine with a late vibrato and a breath of
+  noise) that takes the tune an octave lower while the harp thins out. **Fairy dust:** sparkles of the G pentatonic high
+  up, now and then, far left or right. The melody runs through a dotted-eighth ping-pong echo; everything shares a
+  **hall** (a convolver with a generated 2.6 s impulse response that gets darker as it fades). The playtest verdict on
+  v0.5's lullaby ("dreadful") came from a relentless eighth-note arpeggio with random notes against the chord, a buzzy
+  pad and no reverb. `node tools/render-music.js out.wav 75` renders the tune to a file.
+- **Pulling the sling (v0.6.1):** no more creaking rubber. An airy shimmer of fairy dust swells and brightens with the
+  tension, and the four detents play a rising G major arpeggio on the music box; full power adds a high sparkle.
 - **Collisions:** soft bonks between cakes, splashy plops on the rim.
-- **Merges:** pops plus pentatonic chimes that rise with the combo.
-- **Fanfares:** for discoveries, level-ups and Fairy Magic.
-- **Warnings:** tones while a cake is in danger.
-- **Music:** a gentle generative music-box lullaby.
+- **Merges:** a puff plus music-box chimes that rise with the combo.
+- **Fanfares:** for discoveries, level-ups and Fairy Magic (music box).
+- **Warnings:** a soft, slightly uneasy two-note call while a cake is in danger.
 
-Music and sound can be toggled separately in the pause menu.
+Music and sound can be toggled separately in the pause menu. Mix (offline render): peak about −11 dBFS, long-term RMS
+about −26 dBFS, no clipping; the master compressor (threshold −14 dB, ratio 3) only catches peaks.
 
 ## Tuning knobs
 - **`js/physics.js` → `CFG`:**

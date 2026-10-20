@@ -51,7 +51,12 @@
       <div id="combo" class="combo"></div>
       <div id="discover" class="discover"><canvas id="discoverIcon" width="96" height="96"></canvas><div><div class="discover-kicker">New cake!</div><div class="discover-name" id="discoverName"></div></div></div>
       <div class="coach-wrap"><div id="coach" class="coach"><div class="coach-title"></div><div class="coach-sub"></div><div class="coach-row hidden"></div></div></div>
-      <div class="ladder-wrap"><div id="ladder" class="ladder" aria-label="Cake ladder"></div></div>
+      <button id="bookHud" class="book-pill" aria-label="Cake Book">
+        <svg viewBox="0 0 24 24" class="book-ic"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H11a2 2 0 0 1 1 .3 2 2 0 0 1 1-.3h5.5A1.5 1.5 0 0 1 20 4.5v13a1.5 1.5 0 0 1-1.5 1.5H13.4a1.4 1.4 0 0 0-1.4.9 1.4 1.4 0 0 0-1.4-.9H5.5A1.5 1.5 0 0 1 4 17.5z" fill="#fff"/><path d="M12 5.2v13" stroke="#b98bd9" stroke-width="1.6" stroke-linecap="round"/><path d="M6.5 7.5h3.5M6.5 10h3.5M6.5 12.5h3.5M14 7.5h3.5M14 10h3.5M14 12.5h3.5" stroke="#d8b7ea" stroke-width="1.3" stroke-linecap="round"/><path d="M12 2.2l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2L9.1 4.4l2-.3z" fill="#ffd34d" stroke="#fff" stroke-width=".6"/></svg>
+        <span class="book-label">Cake Book</span>
+        <span class="book-count" id="bookCount">1/11</span>
+        <span class="book-new" id="bookNew">New!</span>
+      </button>
     </div>
 
     <!-- ===== Title ===== -->
@@ -144,7 +149,7 @@
     <div id="book" class="screen modal hidden">
       <div class="card">
         <h2><span class="leaf">&#10047;</span> Cake Book <span class="leaf">&#10047;</span></h2>
-        <p class="sub">From tiny to fairytale!</p>
+        <p class="sub" id="bookSub">From tiny to fairytale!</p>
         <div id="bookGrid" class="book-grid"></div>
         <button class="btn btn-play small close-btn" data-close="book">Close</button>
       </div>
@@ -159,6 +164,7 @@
           <button id="musicBtn" class="btn btn-soft toggle"></button>
           <button id="sfxBtn" class="btn btn-soft toggle"></button>
         </div>
+        <button id="pauseBookBtn" class="btn btn-soft">Cake Book</button>
         <button id="pauseHowBtn" class="btn btn-soft">How to play</button>
         <button id="restartBtn" class="btn btn-soft">Restart</button>
         <button id="menuBtn" class="btn btn-soft">Menu</button>

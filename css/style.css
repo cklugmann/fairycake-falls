@@ -277,37 +277,36 @@ button { font-family: inherit; cursor: pointer; border: 0; touch-action: manipul
 .coach-row .sym, .chain .sym { font-size: 20px; font-weight: 700; color: var(--pink); padding: 0 2px 6px; line-height: 1; }
 .ic-heart { width: 1.05em; height: 1.05em; vertical-align: -0.16em; display: inline-block; }
 
-/* cake ladder: the whole merge chain, lit up as far as this run got */
-.ladder-wrap {
+/* the Cake Book pill at the bottom: opens the book mid-game, counts the cakes found, pulses for a new one */
+.book-pill {
+  --bt: translateX(-50%);
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 50%;
   bottom: calc(8px + var(--sab));
+  transform: var(--bt);
+  transform-origin: bottom center;
+  scale: var(--k);
   display: flex;
-  justify-content: center;
-  pointer-events: none;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 9px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 232, 246, 0.92));
+  border: 2.5px solid #fff;
+  box-shadow: 0 4px 14px rgba(120, 60, 120, 0.22);
+  color: var(--plum);
+  font-weight: 700;
+  font-size: 14px;
   transition: opacity 0.35s ease;
 }
-.ladder-wrap.dim { opacity: 0.12; }
-.ladder {
-  display: flex;
-  align-items: flex-end;
-  gap: 1px;
-  padding: 4px 8px 4px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.6);
-  border: 2px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 4px 14px rgba(120, 60, 120, 0.18);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  scale: var(--k);
-  transform-origin: bottom center;
-}
-.rung { opacity: 0.5; filter: grayscale(0.55) brightness(1.08); transition: opacity 0.3s ease, filter 0.3s ease, transform 0.3s ease; }
-.rung.got { opacity: 1; filter: none; }
-.rung.top { transform: translateY(-2px) scale(1.2); filter: drop-shadow(0 0 3px #ffffff) drop-shadow(0 2px 3px rgba(150, 60, 120, 0.35)); }
-.rung.new { animation: rungNew 0.9s cubic-bezier(0.2, 1.5, 0.4, 1); }
-.ladder.pulse { animation: ladderPulse 1.5s ease; }
+.book-pill.dim { opacity: 0.12; pointer-events: none; }
+.book-pill:active { transform: var(--bt) scale(0.95); }
+.book-ic { width: 26px; height: 26px; border-radius: 8px; background: radial-gradient(circle at 35% 30%, #c9b2ff, #8f6be6); padding: 3px; box-shadow: inset 0 -2px 0 rgba(60, 30, 120, 0.25); }
+.book-count { font-size: 12px; font-weight: 700; color: #fff; background: var(--pink); border-radius: 999px; padding: 1px 8px; line-height: 16px; }
+.book-new { position: absolute; right: -8px; top: -11px; font-size: 11px; font-weight: 700; color: #fff; background: linear-gradient(180deg, #ffd34d, #ff9d2e); border: 2px solid #fff; border-radius: 999px; padding: 0 7px; line-height: 16px; transform: rotate(8deg) scale(0); transition: transform 0.3s cubic-bezier(0.2, 1.5, 0.4, 1); box-shadow: 0 2px 6px rgba(200, 100, 50, 0.35); }
+.book-pill.new .book-new { transform: rotate(8deg) scale(1); }
+.book-pill.new { animation: bookPulse 1.4s ease 2; }
+.book-pill.pulse { animation: bookPulse 1.5s ease; }
 
 #hud.danger .pill { border-color: #ff8fb4; }
 
@@ -454,6 +453,11 @@ button { font-family: inherit; cursor: pointer; border: 0; touch-action: manipul
 .book-item .nm { font-size: 13px; font-weight: 700; color: var(--plum); line-height: 1.15; min-height: 30px; display: grid; place-items: center; }
 .book-item .tier { font-size: 11px; font-weight: 600; color: #b78aa6; }
 .book-item.locked .nm { color: #b9a3b3; }
+.book-item { position: relative; }
+.book-item .tag { position: absolute; left: 6px; top: 6px; font-size: 10px; font-weight: 700; color: #fff; background: var(--pink); border-radius: 999px; padding: 1px 6px; line-height: 14px; }
+.book-item.fresh { border-color: #ffd34d; box-shadow: 0 0 0 2px rgba(255, 211, 77, 0.45); }
+.book-item.fresh .tag { background: linear-gradient(180deg, #ffd34d, #ff9d2e); }
+.book-item.run .nm { color: var(--pink-deep); }
 
 .toggles { display: flex; gap: 10px; }
 .toggles .btn { flex: 1; font-size: 16px; }
@@ -519,29 +523,26 @@ button { font-family: inherit; cursor: pointer; border: 0; touch-action: manipul
 @keyframes float { 0%, 100% { transform: translate(-50%, 0); } 50% { transform: translate(-50%, -8px); } }
 @keyframes streakBump { 0% { transform: scale(1); } 40% { transform: scale(1.3) rotate(-4deg); } 100% { transform: scale(1); } }
 @keyframes streakLost { 0% { opacity: 1; transform: none; } 30% { transform: translateX(-4px); } 60% { transform: translateX(4px); } 100% { opacity: 0; transform: scale(0.7); } }
-@keyframes rungNew { 0% { transform: scale(0.6); } 45% { transform: translateY(-10px) scale(1.7); } 100% { transform: translateY(-2px) scale(1.2); } }
-@keyframes ladderPulse {
-  0%, 100% { transform: none; }
-  20% { transform: scale(1.12); box-shadow: 0 0 0 4px rgba(255, 111, 168, 0.65), 0 4px 14px rgba(120, 60, 120, 0.18); }
-  45% { transform: scale(1); }
-  65% { transform: scale(1.08); box-shadow: 0 0 0 4px rgba(255, 111, 168, 0.5), 0 4px 14px rgba(120, 60, 120, 0.18); }
+@keyframes bookPulse {
+  0%, 100% { transform: var(--bt); }
+  20% { transform: var(--bt) scale(1.12); box-shadow: 0 0 0 5px rgba(255, 111, 168, 0.6), 0 4px 14px rgba(120, 60, 120, 0.22); }
+  45% { transform: var(--bt); }
+  65% { transform: var(--bt) scale(1.08); box-shadow: 0 0 0 5px rgba(255, 111, 168, 0.45), 0 4px 14px rgba(120, 60, 120, 0.22); }
 }
 
 @media (min-aspect-ratio: 4/3) {
   .logo-wrap { width: min(48vw, 520px); top: calc(2% + var(--sat)); }
   .title-bottom { bottom: 3%; }
 }
-/* wide, tall screens: the ladder stands upright on the left – small at the bottom, big at the top */
+/* wide screens: the power-ups sit at the very bottom, the Cake Book pill in the bottom left corner beside them */
 @media (min-aspect-ratio: 4/3) and (min-height: 600px) {
-  .ladder-wrap { left: 14px; right: auto; top: 50%; bottom: auto; transform: translateY(-46%); }
-  .ladder { flex-direction: column-reverse; align-items: center; padding: 8px 5px; transform-origin: left center; scale: calc(var(--k) * 0.9); }
   .power-btn { bottom: calc(18px + var(--sab)); }
+  .book-pill { --bt: none; left: 16px; transform-origin: bottom left; bottom: calc(110px * var(--k) + var(--sab)); }
 }
-/* short landscape phones: the ladder moves to the top centre, out of the way of the pull */
+/* short landscape phones: the pill moves up beside the power-ups, out of the way of the pull */
 @media (min-aspect-ratio: 4/3) and (max-height: 599px) {
-  .ladder-wrap { top: calc(8px + var(--sat)); bottom: auto; }
-  .ladder { transform-origin: top center; }
   .power-btn { bottom: calc(12px + var(--sab)); }
+  .book-pill { --bt: none; left: 16px; transform-origin: bottom left; bottom: calc(88px * var(--k) + var(--sab)); }
 }
 @media (max-height: 640px) {
   .goal-card { display: none; }

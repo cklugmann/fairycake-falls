@@ -140,7 +140,7 @@
       this.stage = 1; this.stageGoal = stageGoal(1); this.stageMerges = 0; this.stageDone = false; this.whirl = null;
       this.ring = ringFor(3);
       this.world.inflowK = 1; this.world.free = false; this.world.shear = 0; this.world.twinK = 1; this.world.twinAlways = false;
-      this.maxTier = 3; this.merges = 0; this.shots = 0; this.shotSeq = 0;
+      this.maxTier = 3; this.merges = 0; this.shots = 0; this.shotSeq = 0; this.runNew = [];
       this.jokers = 0; this.wands = 0; this.wandMode = false;
       this.bubble = null; this.nextBubbleAt = 14 + FC.randInt(0, 6);
       this.danger = 0; this.dangerBody = null; this.warnT = 0; this.dangerHinted = false;
@@ -793,7 +793,6 @@
     reach(nt) {
       if (nt > this.maxTier) {
         this.maxTier = nt;
-        FC.UI.setLadder(this.maxTier, nt);
         // a bigger cake needs more room: the calm pool widens
         if (ringFor(nt) > this.ring + 1 && this.state === 'playing') {
           this.ringPulse = Math.max(this.ringPulse, 2.2);
@@ -808,7 +807,9 @@
       this.discovered.push(nt);
       FC.store.set('book', this.discovered);
       if (nt >= 2) {
+        if (this.runNew) this.runNew.push(nt); // a first-time find: the Cake Book pill shows "New!"
         FC.UI.discover(nt);
+        FC.UI.markNewCake(nt);
         AU.discover();
       }
     },
@@ -1073,7 +1074,7 @@
           if (c.t > 2.6) {
             c.step = 'goal'; c.t = 0;
             this.coachSay('goal', 'Bake bigger and bigger cakes', 'All the way up to the Royal Fairycake!', { chain: true });
-            FC.UI.pulseLadder();
+            FC.UI.pulseBook();
           }
           break;
         case 'goal':
@@ -1486,8 +1487,8 @@
       const prev = this.hint && this.hint.kind === 'pull' ? this.hint.u : 0;
       if (prev < 1.75 && u >= 1.75) this.sling.snap = 1; // "let go": the ribbon twangs
       this.hint = { kind: 'pull', alpha, pull, press, u };
-      // does the hand reach down into the cake ladder?
-      const L = FC.UI.ladderRect, g = this.slingGround();
+      // does the hand reach down into the Cake Book pill?
+      const L = FC.UI.bookRect, g = this.slingGround();
       const s = FC.clamp(S.pr * 0.17, 26, 52);
       const handBottom = g.y + this.maxPull() * 0.7 + s * 1.5;
       FC.UI.setHandOver(!!L && alpha > 0.02 && handBottom > L.top && g.x + s > L.left && g.x - s < L.right);
