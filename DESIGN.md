@@ -1,4 +1,4 @@
-# Fairycake Falls – Game Design (prototype v0.5)
+# Fairycake Falls – Game Design (prototype v0.6)
 
 ## Pitch
 A cosy, endless flick-and-merge game. You flick cakes from a little slingshot
@@ -9,6 +9,44 @@ the next, bigger cake. The pond slowly fills up. Play for a high score.
 floats up from the bottom. You *pull back and flick*, Golf-With-Your-Friends
 style, into a loose cluster of cakes floating in a pond with a current of its own.
 Bank shots, rides on the current, knock-ons and chain reactions replace the dropping column.
+
+## Design goal for v0.6: tension from the first flick, a pond that stays full and playable
+Playtest verdict on v0.5: "it still isn't fun – at the start it takes very long until I have to pay attention, and
+once there are enough cakes in the pond it feels blocking and clunky." Measured, both complaints have one root:
+
+- **The start was empty.** Five tiny cakes in a pool whose area they filled to 10 %. With one merge per flick the
+  population never grew (a flick adds one cake, a merge removes one), so the pond stayed at 6–10 cakes for the whole
+  game. The sloppy bot saw its first warning after ~70 flicks, the careful one at the end of the game.
+- **The ladder was too steep for a round pond.** A Rainbow Cake (r 314) took a third of the pond, a Royal Fairycake
+  (430) half its width; games ended with 8–13 cakes, four or five of them huge, forming a wall in the middle that the
+  small ones bounced off and hung on at the ring. The vision board shows the opposite: a pond full of ~25 cakes, the
+  biggest about a fifth of the pond.
+- **The cluster never rested.** The personal-space cushion was a purely positional push: the drain pressed resting
+  cakes through it into each other, they bounced apart (e 0.35 above 110 u/s), were pressed in again … a cluster of
+  20 bumped ~100 times a second, with wobble animations and bonk sounds. That is the "clunky".
+- **Resting twins next to each other did not merge** (by design in v0.5). Next to a pile that stirs itself, two
+  identical cakes with a gap read as a bug, and a knock-on that leaves a gap is a cheat.
+
+| v0.5 | v0.6 |
+| --- | --- |
+| Start: 5 cakes in a cross, pool 600 | **A populated start:** 11 cakes (9 in the tutorial) packed by the water, no twins touching, the first cake in the sling always has a match on the front face. The pool starts at **560** – the cluster fills ~40 % of it, a careless push already matters |
+| Radii 69 … 430 (×1.26 → ×1.17 per tier) | **A flatter ladder:** 74 … 259 (×1.19 → ×1.10). The pool holds 18 cakes at the start and 40 at the end instead of 8–13; a Royal Fairycake is a quarter of the pool, two of them fit side by side |
+| Pool widens 46 per tier to 880 | **36 per tier to 848:** less than the cakes grow, so one cake of every tier just about fills the pool – the late game is about merging the big ones (Magic Cakes!), not about running out of room with eight cakes |
+| Nothing arrives but what you flick | **The castle's delivery:** with every finished order a few fresh small cakes (0–9) tumble down the spring and are mixed in by the whirl. The number tops the pool up to a target fill that rises with the stage (36 % → 50 %), limited by how far the cluster already reaches. The pond stays populated for a player who merges every flick, and the pressure ramps for everybody |
+| Cushion 0.3 r, positional only | **Cushion 0.08 r, inelastic:** slow approaches (< 260 u/s, the drain's doing) are absorbed at the cushion's edge, a shove passes through. A resting cluster is silent (0 impacts in 10 s measured, instead of ~1000) and compact |
+| Resting twins wait for a push | **Touching twins always merge** (`TWIN_MOVE` 0): knock-ons finish, chains run, nothing looks broken |
+| Merges inside the whirl fill the next order | **Scored, but they do not fill the order** – a lucky whirl used to complete the next order on the spot (whirl after whirl in the first three flicks of a chain-rich start) |
+| Orders up to 24, whirl 4.3–5.8 s, "Order complete" wait 2.5 s | Orders up to **18**; whirl **3.5–4.7 s**, wait **1.4 s** – the stage beat comes every 15–20 flicks and the show is shorter |
+| Pool turns 0.1 → 0.2 rad/s | **0.15 → 0.26 rad/s:** the back of the cluster comes round to the sling in 12–20 s instead of 30 |
+| Overflow after 4 s, always | **5 s, and up to 10 s while the pool is less than 40 % full:** a cake stuck on a bump of a half-empty cluster is jostled free by the next flicks; a full pond overflows fast. The tip says "Caught in the current!" or "Too full!" accordingly |
+
+The bot harness (`tools/bot.js`) now prints the time course of a game in buckets of ten flicks – cakes in the pond,
+fill, merges on offer, hearts in the preview, warnings – and `tools/physlab.js` runs the cluster physics without a
+browser (capacity of the pool, rest jitter, the push of a flick, late-game envelopes). Numbers in "Balance" below.
+
+What a flick does to a *packed* cluster is now modest by design: momentum spreads over twenty cakes and the friction
+eats it, so the hit cake moves 10–15 u and the shot nestles in at the front. The game is played on the cluster's
+surface – like Suika – with the pool's turn, the whirl and the rim rides bringing new faces to the sling.
 
 ## Design goal for v0.5: the water has a character, every flick has consequences
 v0.4 let the player turn the pond with a swipe. Playtest verdict: with a free turntable there is always a gap or a
@@ -78,30 +116,31 @@ v0.2 answered "I don't get the game, the controls or the goal". It added:
 ## Core loop
 1. **Aim:** the dotted preview simulates the real flick against the cluster, which turns with the pool meanwhile, up to the first touch (contact ghost, heart for a match, push arrow otherwise). A flick into open water also shows the drift – or the ride round the rim – up to the point where the cake touches the cluster. What the touch sets off is not shown.
 2. **The water** (`js/physics.js`, `World.flowAt`):
-   - **Calm pool** (inside the dotted ring, radius `rCalm`): turns at `omegaCore` (0.1 rad/s on stage 1 → 0.2 on stage 10) and drifts inwards at 90 u/s in the middle rising to 190 u/s at the ring (× a mild size factor, so big cakes sink in a little harder).
+   - **Calm pool** (inside the dotted ring, radius `rCalm`): turns at `omegaCore` (0.15 rad/s on stage 1 → 0.26 on stage 10) and drifts inwards at 90 u/s in the middle rising to 190 u/s at the ring (× a mild size factor, so big cakes sink in a little harder).
    - **Rim current** (outside the ring, blended over 120 u): moves at `vRim` (520 → 700 u/s) with only a gentle inward drift of 110 u/s, so a slow cake rides round the pond.
    - **Coupling:** a cake slower than 380 u/s floats with the water, one faster than 820 skims over the drain – but even a skimming cake feels 30 % of the turning part (`TAN_K`). Cakes that touch the cluster turn with the pool wherever they are, so the current cannot peel the cluster apart.
    - **Skim friction:** 850 u/s² relative to the water the cake feels – an even glide and a clear stop; shoved cakes slide a little.
-3. **The cluster:** cakes keep a cushion of 0.3 × the smaller radius between them (`SPACE`, restored softly: a drift cannot close it, a flick can). Masses go with r^1.4, bounciness 0.35: a hit shoves rather than bounces.
+3. **The cluster:** cakes keep a sliver of cushion, 0.08 × the smaller radius (`SPACE`), restored softly; approaches slower than 260 u/s are absorbed at the cushion's edge (`CUSHION_V`), so the drain packs the cluster without bumping, while a shove passes through. Masses go with r^1.4, bounciness 0.35: a hit shoves rather than bounces.
 4. **Merge:**
-   - **Contact:** two identical cakes merge when they overlap. The new cake keeps the momentum and nudges its neighbours, which sets off chain reactions.
-   - **Fairy magnetism:** a *moving* cake (> 120 u/s) is pulled to a twin within 0.4 × r – forgiveness for near misses; resting twins stay apart until something pushes them together.
-   - **Hit-stop:** a short pause of 45–130 ms sells each pop.
+   - **Contact:** two identical cakes merge when they overlap. The new cake keeps the momentum and nudges its neighbours a little (`NUDGE` 150 u/s, half of v0.5: with twins that merge at rest, the old burst reshuffled the cluster and set off chains nobody planned).
+   - **Fairy magnetism:** a cake is pulled to a twin within 0.4 × r – forgiveness for near misses, and the way resting twins that end up side by side find each other (`TWIN_MOVE` 0: touching twins always merge, as in Suika).
+   - **Hit-stop:** a short pause of 35–100 ms sells each pop (lighter than in v0.5, chains are common now).
 5. **Stage:** every merge fills the order. When it is complete the whirl reshuffles the cluster and the next stage begins (see below).
-6. **Lose:** a cake that rests beyond the ring (in the current) for 4 seconds overflows the pond – "rests" meaning at rest relative to the water and not being carried inwards. The warning starts after 1.5 s, so a short ride stays quiet. After a whirl the ring only counts again after a 2.5 s grace.
+6. **Lose:** a cake that rests beyond the ring (in the current) for 5 seconds overflows the pond – "rests" meaning at rest relative to the water and not being carried inwards. While the pool is less than 40 % full the limit stretches to up to 10 s (see "Lose condition"). The warning starts after 1.5 s, so a short ride stays quiet. After a whirl the ring only counts again after a 2.5 s grace.
 
 ## Stages, orders and the whirl
-- **Order:** stage *n* asks for `n = 1 ? 5 : min(24, 4 + 2n)` merges (5, 8, 10, 12, 14, …). The HUD pill shows the stage, a bar and "N to go".
-- **Completion:** "Order complete!" – input pauses, the game waits for the chain reaction to finish (max 2.5 s), then the **whirl** starts. It has to reshuffle a *dense* late-game cluster, which a plain spin never did (everything just turned together), so it works in four phases (`WHIRL` in `game.js`):
-  1. **Tear (0–0.55 s):** the water spins up to 3.4 rad/s, the rim turning faster than the middle (`shear`), the drain turns into an *outflow* (`inflowK` −1.3), nothing is held by the cluster any more (`World.free`), the cushion is off, and every cake gets one random kick (turbulence, ~320 u/s). The cluster flies apart to the rim.
-  2. **Spin (0.55–1.9 s):** the cakes orbit the rim, overtaking and bumping each other; fairy magnetism is boosted (×2.4) and pulls resting twins too, so twins that pass each other merge – the free merges count for the new order.
-  3. **Drain (1.9–2.9 s):** the spin dies down and the current turns into a strong drain (×3.2, bigger cakes pulled harder), everything rushes back to the middle and packs tight.
-  4. **Settle (2.9–4.3 s, up to 5.8 s):** the drain eases off, the cushion returns; the whirl ends once every cake is slow and inside the ring. Danger timers are frozen throughout and for 2.5 s after.
+- **Order:** stage *n* asks for `n = 1 ? 5 : min(18, 4 + 2n)` merges (5, 8, 10, 12, 14, 16, 18, 18, …). The HUD pill shows the stage, a bar and "N to go". Merges the whirl makes by itself are scored but do not count.
+- **Completion:** "Order complete!" – input pauses, the game waits for the chain reaction to finish (max 1.4 s), then the **whirl** starts. It has to reshuffle a *dense* late-game cluster, which a plain spin never did (everything just turned together), so it works in four phases (`WHIRL` in `game.js`):
+  1. **Tear (0–0.45 s):** the water spins up to 3.4 rad/s, the rim turning faster than the middle (`shear`), the drain turns into an *outflow* (`inflowK` −1.3), nothing is held by the cluster any more (`World.free`), the cushion is off, and every cake gets one random kick (turbulence, ~320 u/s). The cluster flies apart to the rim.
+  2. **Spin (0.45–1.55 s):** the cakes orbit the rim, overtaking and bumping each other; fairy magnetism is boosted (×2.4), so twins that pass each other merge (scored, not counted for the order). **The delivery:** the castle's fresh cakes (see below) tumble down the spring one by one, 0.18 s apart, and join the spin (a big delivery runs on into the drain).
+  3. **Drain (1.55–2.4 s):** the spin dies down and the current turns into a strong drain (×3.2, bigger cakes pulled harder), everything rushes back to the middle and packs tight.
+  4. **Settle (2.4–3.5 s, up to 4.7 s):** the drain eases off, the cushion returns; the whirl ends once every cake is slow and inside the ring. Danger timers are frozen throughout and for 2.5 s after.
   Measured on a dense 17-cake cluster (bigger than the ring): 65–85 % of neighbour pairs change, 2–4 merges, and the cluster fits inside the ring again afterwards in every run.
+- **The delivery:** at the start of the whirl the game counts how many Cherry-Bite-sized cakes would top the pool up to `targetFill(stage) = min(0.5, 0.36 + 0.025 (stage − 2))` (sum of cake areas over the pool area; a packed pool reaches ~0.53), caps that at 9, and caps it again by how far the cluster already reaches (edge over ring: > 0.9 → none, > 0.82 → 1, > 0.74 → 2, > 0.66 → 4, > 0.58 → 6). The cakes are Macarons (½), Cherry Bites (⅜) and Cupcakes (⅛), 0.18 s apart. The banner says "N fresh cakes".
 - **At the end:** the stage banner, a gift (Magic Cake on even stages, Wand on odd), a new world every third stage.
 - **Stage multiplier:** `1 + 0.15 · (stage − 1)`, capped at ×2.5, on every merge, on top of combo and streak.
 - **Why merges, not target cakes:** an order for a specific cake would have to leave the pond (it is the material for the next tier) or grow exponentially. A merge count keeps every cake, gives stages of 10–25 flicks, and – like Underwatermelon's gates – turns the stuck late-game structure into a fresh one every stage.
-- **The ring is not a stage reward:** the calm pool widens with the biggest cake baked (600 + 46 per tier above Cupcake, capped at 880), with a pink pulse and "The pool widens!".
+- **The ring is not a stage reward:** the calm pool widens with the biggest cake baked (560 + 36 per tier above Cupcake: 848 at the Royal Fairycake), with a pink pulse and "The pool widens!".
 
 ## First-time experience
 - **Title screen:**
@@ -162,22 +201,22 @@ judged by eye; the consequences of a hit are the player's to read – that is wh
 ## Cakes
 | Tier | Name | Radius* | Points when created |
 | ---: | --- | ---: | ---: |
-| 1 | Macaron | 69 | – |
-| 2 | Cherry Bite | 87 | 2 |
-| 3 | Cupcake | 108 | 6 |
-| 4 | Lemon Tart | 132 | 12 |
-| 5 | Blossom Cake | 159 | 20 |
-| 6 | Choco Cake | 190 | 30 |
-| 7 | Peach Cake | 226 | 42 |
-| 8 | Blueberry Cake | 267 | 56 |
-| 9 | Rainbow Cake | 314 | 72 |
-| 10 | Fairy Torte | 367 | 90 |
-| 11 | Royal Fairycake | 430 | 110 |
-| – | Magic Cake (power-up) | 84 | upgrade of the touched cake |
+| 1 | Macaron | 74 | – |
+| 2 | Cherry Bite | 88 | 2 |
+| 3 | Cupcake | 103 | 6 |
+| 4 | Lemon Tart | 119 | 12 |
+| 5 | Blossom Cake | 136 | 20 |
+| 6 | Choco Cake | 154 | 30 |
+| 7 | Peach Cake | 173 | 42 |
+| 8 | Blueberry Cake | 193 | 56 |
+| 9 | Rainbow Cake | 214 | 72 |
+| 10 | Fairy Torte | 236 | 90 |
+| 11 | Royal Fairycake | 259 | 110 |
+| – | Magic Cake (power-up) | 80 | upgrade of the touched cake |
 
-\*World units; the pond radius is 1000.
+\*World units; the pond radius is 1000. (v0.5 radii were 69 … 430; see the v0.6 notes for why the ladder is flatter now.)
 
-- **New cakes:** Macaron, Cherry Bite and Cupcake, with weights 36/30/22. The Lemon Tart (weight 12) joins once a Peach Cake exists. Fewer kinds in the queue means more reachable matches from the single sling.
+- **New cakes:** Macaron, Cherry Bite, Cupcake and Lemon Tart, with weights 32/30/24/14. The Blossom Cake (weight 8) joins once a Peach Cake exists. Fewer kinds in the queue means more reachable matches from the single sling.
 - **Fairy Magic:** two Royal Fairycakes vanish in a blast worth 500 points that pushes everything outwards.
 
 ## Scoring, combos, stages, worlds
@@ -195,22 +234,36 @@ judged by eye; the consequences of a hit are the player's to read – that is wh
 - **Fairy Bubble:** a bubble appears every 14–22 shots and stays for 16 s. Hitting it gives a Magic Cake, a Wand or 60 points.
 
 ## Lose condition in detail
-- **Countdown:** the timer runs while a cake's outer edge is beyond the ring *and* the cake is nearly at rest relative to the water (< 420 u/s) and not being carried inwards (< 90 u/s). It counts down when the cake comes back in.
+- **Countdown:** the timer runs while a cake's outer edge is beyond the ring *and* the cake is nearly at rest relative to the water (< 420 u/s) and not being carried inwards (< 90 u/s). It counts down when the cake comes back in. The limit is 5 s, plus 25 s × (0.4 − fill) while the pool is less than 40 % full (10 s at 20 %): a cake stuck on a bump of a half-empty cluster is not an overflow yet, the next flicks jostle it free.
 - **Grace period:** freshly launched cakes are ignored for 1.1 s; after a whirl every cake gets 2.5 s. The warning (ring segment, countdown bubble, red pulse, tone) only starts after 1.5 s.
 - **Warnings:** the ring segment near the cake glows, a countdown bubble shows above the cake, the screen edge pulses red, a warning tone plays, faces turn worried and Tilly sweats.
 
-## Balance (bot test, v0.5 settings)
+## Balance (bot test, v0.6 settings)
 A scripted player (`tools/bot.js`) searches the preview (angles in 3° steps × 9 powers, plus a look-ahead the player does not get) for the
 flick that bakes the most, swaps when the next cake is better, sometimes waits 2.5 s for the pool to turn a target
-round, uses the Wand in danger and aims with human-like noise. "Sloppy" replaces 60 % of its flicks with random lobs.
+round, uses the Wand in danger and aims with human-like noise. "Typical" replaces 25 % of its flicks with random lobs,
+"sloppy" 50 %. Note that even the sloppy bot reads push-merges through the look-ahead and rides the current far more
+than a person would, so its merge rate is on the high side and its danger blips mostly come from rides.
 
-| Player | Flicks per game | Stage | Biggest cake | Flicks that merge | Knock-outs / danger situations per game |
-| --- | --- | --- | --- | --- | --- |
-| Careful | 140–170 | 10–11 | tier 9 | ~55 % | 1–5 / 15–21 |
-| Sloppy | 80–165 | 7–11 | tier 9–10 | ~48 % | 2–5 / 5–17 |
+| Player | Flicks per game | Stage | Biggest cake | Flicks that merge | Heart in the preview | Cakes in the pond | First warning (flick) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Careful | 150–200 | 12–15 | tier 10–11 | ~60 % | 50–80 % of turns | 6–14 | ~50–75 |
+| Typical | 130–160 | 11–13 | tier 9–10 | ~55 % | 60–90 % | 7–13 | ~50–75 |
+| Sloppy | 85–180 | 8–14 | tier 9–10 | ~53 % | 70–100 % | 7–16 | ~25–60 |
 
+For comparison, v0.5 with the same bot: careful 130–280 flicks (stage 9–15), typical 140–200, sloppy 135–140; the pond held
+6–17 cakes, the pool filled (old metric) from ~20 % to 70–85 %, and the typical player's first real warning came at the very end.
+
+The time course (`tools/bot.js` prints it in buckets of ten flicks) is the thing to watch when tuning: cakes in the pond
+should sit around 10–15 from the first flick on, the fill should climb towards 45 % by the last third, hearts should be on
+offer in well over half of the turns, and warnings should appear in the last third, not only on the fatal flick.
 A flick resolves in about 1–1.5 s, a ride round the rim takes 2–5 s more (the next flick does not have to wait).
-A run of 150 flicks takes about 10–12 minutes.
+A run of 150 flicks takes about 10 minutes.
+
+**Physics lab** (`tools/physlab.js`, v0.6): the pool holds 18 cakes (tiers 1–6 mix) at the start ring of 560 and 40 at 880; a packed
+cluster at rest makes 0 impacts in 10 s (v0.5 cushion: ~1000); resting twins with a gap inside the magnetism range merge in
+0.1–0.25 s; a full-power Macaron into a packed 20-cake cluster moves the cakes it hits by 6–15 u and comes to rest at the front;
+one cake of every tier 1–11 reaches 94–100 % of the Royal's ring (848).
 
 ## Art direction
 - **One camera.** The arena is tilted, so the pond is an ellipse with ratio K = 0.78. The water sits lower than the bank, so the far inner wall is visible and the spring tumbles over it into the pond. The near bank is a separate front layer that slightly overlaps the cakes at the front, which gives the scene real depth. The island cliff, waterfalls and the castle island use the same viewpoint.
@@ -236,12 +289,13 @@ Music and sound can be toggled separately in the pause menu.
   - the calm pool `INFLOW` (at the ring) / `INFLOW_MIN` (middle) / `INFLOW_CORE`, the size sorting `SIZE_K0` / `SIZE_K1`, its turn `OMEGA_MIN` / `OMEGA_MAX`
   - the rim current `VRIM_MIN` / `VRIM_MAX`, its inward drift `INFLOW_BAND`, the blend width `BAND_RAMP`
   - how much a fast cake feels the water `SKIM_LO` / `SKIM_HI` / `TAN_K`
-  - the cluster: cushion `SPACE` / `SPACE_K`, mass `MASS_EXP`, bounciness `REST`
+  - the cluster: cushion `SPACE` / `SPACE_K` / `CUSHION_V` (the approach speed the cushion absorbs), mass `MASS_EXP`, bounciness `REST`
   - fairy magnetism `TWIN_RANGE` / `TWIN_ACC` / `TWIN_MOVE`
   - the ring `RING_MIN` / `RING_STEP` / `DANGER`, the timer `DANGER_TIME` / `WARN_AT`
   - flick distance range `D_MIN` / `D_MAX`
 - **`js/game.js`:**
   - order sizes (`stageGoal`), stage multiplier (`stageMult`), worlds per stage (`themeForStage`), the ring per tier (`ringFor`)
+  - the start cluster (`START_N`, the tier list in `setupStart`), the delivery (`targetFill`, `DELIVERY_MAX`, the reach caps in `deliverySize`, the tier mix in `deliverCake`)
   - the whirl: timeline, top speed, shear, outflow, drain, twin boost and kick (`WHIRL`)
   - flick cone `CONE`, dead zone `DEAD` and pull length (`maxPull`)
   - spawn weights (`randTier`)
@@ -252,6 +306,9 @@ Music and sound can be toggled separately in the pause menu.
 - **`js/scene.js`:** layout and the arena size on screen.
 
 ## Ideas for the next iteration
+- Playtest v0.6 by feel on a phone: does the populated start read as "a pond of cakes" or as clutter? Is the delivery at the whirl
+  a treat or a threat? Tune `targetFill` and `START_N` from that.
+- A third slot in the queue ("after next") for planning chains.
 - Playtest the guided first game with people who have never seen it, and measure time-to-first-merge and time-to-first-ride.
 - Calibrate the cluster by feel on a phone: `MASS_EXP`, `SPACE`, `FRICTION`, `INFLOW_MIN` decide how much a hit stirs things up.
 - Water with moods per world: a stronger current in Candy Woods, a pulsing tide in Moonlight Bay, two eddies in Rainbow Heights.

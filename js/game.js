@@ -30,9 +30,16 @@
   // the stage whirl: tear (the water spins up and pushes everything out), spin (the cluster orbits the rim, mixed by
   // shear and turbulence, twins find each other), drain (the current drags everything back to the middle, big cakes
   // first), settle. Times in seconds, speeds in rad/s.
-  const WHIRL = { up: 0.55, hold: 1.9, down: 2.9, settle: 4.3, maxSettle: 5.8, omega: 3.4, shear: 0.8, outflow: -1.3, drain: 3.2, twin: 2.4, kick: 320 };
+  const WHIRL = { up: 0.45, hold: 1.55, down: 2.4, settle: 3.5, maxSettle: 4.7, omega: 3.4, shear: 0.8, outflow: -1.3, drain: 3.2, twin: 2.4, kick: 320 };
+  const START_N = 11;                // cakes floating in the pond when a run starts (the tutorial uses 9)
 
-  const stageGoal = (n) => (n <= 1 ? 5 : Math.min(24, 4 + 2 * n)); // merges an order asks for: 5, 8, 10, 12, ... up to 24
+  const stageGoal = (n) => (n <= 1 ? 5 : Math.min(18, 4 + 2 * n)); // merges an order asks for: 5, 8, 10, 12, ... up to 18
+  // the castle's delivery: with every finished order a few fresh cakes tumble down the spring and join the whirl.
+  // How many depends on how empty the pond is: the delivery tops the pool up to this fill (sum of cake areas over the
+  // pool area), which rises with the stage – the pond stays populated, and the pressure grows even for a player
+  // who merges with every flick
+  const targetFill = (stage) => Math.min(0.5, 0.36 + 0.025 * (stage - 2)); // (a pool holds ~53 % before the cluster touches the ring)
+  const DELIVERY_MAX = 9;
   const ringFor = (maxTier) => Math.min(CFG.DANGER, CFG.RING_MIN + CFG.RING_STEP * Math.max(0, maxTier - 3)); // the calm pool widens with every new cake
   const themeForStage = (n) => Math.floor((n - 1) / 3) % Math.max(1, S.themeCount());
   const easeInOut = (k) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
@@ -55,7 +62,7 @@
     tilly: { x: 0, y: 0, mood: 'idle', moodT: 0, flick: 0 },
     jokers: 0, wands: 0, wandMode: false,
     bubble: null, nextBubbleAt: 16,
-    danger: 0, dangerBody: null, warnT: 0, dangerHinted: false,
+    danger: 0, dangerBody: null, dangerLimit: 5, warnT: 0, dangerHinted: false,
     shake: 0, flash: 0, flashCol: '#ffffff',
     overT: 0, overPops: 0,
     discovered: null,
@@ -145,8 +152,8 @@
       this.state = 'playing';
       if (S.theme !== 0) S.setTheme(0, false);
       const tutorial = FC.store.get('coach', 0) < COACH_DONE;
-      this.setupStart(tutorial);
-      this.queue = tutorial ? [1, 2, 1] : [1, this.randTier()]; // the first cake always has a match on the outside of the start pile
+      const first = this.setupStart(tutorial); // the first cake always has a match on the front face of the start cluster
+      this.queue = tutorial ? [1, 2, 1] : [first, this.randTier()];
       FC.UI.onNewGame();
       this.coach = tutorial ? { step: 'aim', t: 0, shown: '' } : null;
       if (this.coach) this.coachSay('aim', 'Pull the cake back & let go!', 'Like a slingshot');
@@ -155,25 +162,21 @@
       this.setCursor();
     },
 
-    // A few cakes are already floating when a run starts, so the first flick has a target.
-    // The layout is a packed clump with identical cakes on opposite sides, so nothing merges by itself.
+    // A populated pond: a run starts with a cluster of START_N cakes (tiers 1-4) that the water has packed
+    // together, so the first flick already has targets, chains and a little tension (the cluster fills ~40 %
+    // of the calm pool). No two twins touch (they would merge by themselves), and the cake the sling gets first
+    // always has a match on the front face. Returns the tier for the first cake in the sling.
     setupStart(tutorial) {
       const W = this.world;
-      const place = (list) => {
-        W.clear();
-        list.forEach(([tier, x, y], i) => {
-          const b = new Body(tier, TIERS[tier].r, x, y);
-          b.age = 3;
-          b.pop = -0.1 - i * 0.09; // staggered pop-in
-          W.add(b);
-        });
-      };
-      const settle = () => {
+      // the tutorial cluster is calmer: one pair of each tier, and no Cherry Bite next to the Macaron in front,
+      // so the coached first flick makes one merge (not a four-chain) – chains come with the next flicks
+      const tiers = tutorial ? [1, 1, 2, 2, 3, 3, 4, 4, 5] : [3, 2, 1, 2, 3, 1, 4, 2, 3, 4, 1].slice(0, START_N);
+      const settle = (steps) => {
         const onI = W.onImpact, onR = W.onRim, om = W.omegaCore;
         W.onImpact = W.onRim = null;
         W.canMerge = () => false;
         W.omegaCore = 0;
-        for (let i = 0; i < 100; i++) W.step(1 / 60);
+        for (let i = 0; i < (steps || 100); i++) W.step(1 / 60);
         delete W.canMerge;
         W.onImpact = onI; W.onRim = onR; W.omegaCore = om;
         for (const b of W.bodies) { b.vx = 0; b.vy = 0; }
@@ -185,40 +188,84 @@
           for (let j = i + 1; j < B.length; j++) {
             if (B[i].tier !== B[j].tier) continue;
             const gap = Math.hypot(B[i].x - B[j].x, B[i].y - B[j].y) - B[i].r - B[j].r;
-            if (gap < CFG.TWIN_RANGE * Math.min(B[i].r, B[j].r) + 30) return false;
+            if (gap < CFG.TWIN_RANGE * Math.min(B[i].r, B[j].r) + 70) return false;
           }
         }
         return true;
       };
-      if (tutorial) {
-        // a Macaron right in front of the sling, matching pairs around it
-        place([[1, 0, 190], [3, 0, 10], [2, -205, 70], [2, 205, 70], [1, 0, -190]]);
-        settle();
-        return;
-      }
-      // one cake in the middle, four around it in a cross: twins sit opposite each other
-      for (let tries = 0; tries < 20; tries++) {
-        const mid = FC.pick([2, 3, 3]);
-        const other = mid === 3 ? 2 : 3;
-        const ring = [1, other, 1, other];
-        const rot = Math.random() * TAU;
-        const list = [[mid, 0, 0]];
-        for (let i = 0; i < 4; i++) {
-          const a = rot + (i / 4) * TAU;
-          const d = TIERS[mid].r + TIERS[ring[i]].r + 6;
-          list.push([ring[i], Math.cos(a) * d, Math.sin(a) * d]);
+      // a seed in the middle, a ring of six round it, the rest in a second ring; the water packs them into a cluster
+      const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = arr[i]; arr[i] = arr[j]; arr[j] = t; } return arr; };
+      const build = () => {
+        W.clear();
+        // the tutorial turns the layout so that one outer spot sits right in front of the sling (a Macaron goes there)
+        const rot = tutorial ? Math.PI / 2 - Math.PI / 8 : Math.random() * TAU;
+        const pos = [[0, 0]];
+        for (let k = 0; k < 6 && pos.length < tiers.length; k++) { const a = rot + (k / 6) * TAU; pos.push([Math.cos(a) * 215, Math.sin(a) * 215]); }
+        for (let k = 0; pos.length < tiers.length; k++) { const a = rot + ((k + 0.5) / 8) * TAU; pos.push([Math.cos(a) * 410, Math.sin(a) * 410]); }
+        // greedy colouring: fill the spots in random order, each with a tier none of its neighbours has yet
+        const near = pos.map((p) => pos.map((q, j) => (Math.hypot(p[0] - q[0], p[1] - q[1]) < 330 ? j : -1)).filter((j) => j >= 0));
+        const pool = shuffle(tiers.slice());
+        const t = new Array(pos.length).fill(0);
+        const order = shuffle(pos.map((_, k) => k));
+        if (tutorial) { order.splice(order.indexOf(7), 1); order.unshift(7); pool.splice(pool.indexOf(1), 1); pool.unshift(1); }
+        for (const i of order) {
+          const used = near[i].map((j) => t[j]);
+          if (tutorial && near[7].indexOf(i) >= 0) used.push(2);
+          let k = pool.findIndex((x) => used.indexOf(x) < 0);
+          if (k < 0) k = 0;
+          t[i] = pool.splice(k, 1)[0];
         }
-        place(list);
-        settle();
-        if (apart()) return;
+        pos.forEach(([x, y], i) => {
+          const b = new Body(t[i], TIERS[t[i]].r, x, y);
+          b.age = 3;
+          b.pop = -0.1 - i * 0.06; // staggered pop-in
+          W.add(b);
+        });
+        settle(300);
+      };
+      // which cakes can a medium flick from the sling reach?
+      const probe = (deg) => {
+        const L = this.anchorW(1), sp = FC.Physics.speedForPower(0.5), a = (deg * Math.PI) / 180;
+        const pr = W.predict(L.x, L.y, Math.sin(a) * sp, -Math.cos(a) * sp, TIERS[1].r, 1, { maxT: 2.2, driftT: 0, maxLen: 1700, spacing: 90 });
+        return pr.hit && !pr.hit.body.sensor ? pr.hit.body : null;
+      };
+      let fails = 0;
+      for (let tries = 0; tries < 80; tries++) {
+        build();
+        if (!apart()) continue;
+        if (tutorial) {
+          // the straight flick the coach asks for must hit a Macaron
+          const hit = probe(0);
+          if (hit && hit.tier === 1) return 1;
+          if (hit && ++fails > 20) {
+            // rare: something keeps getting in front – make that cake the Macaron (if its twins stay apart)
+            const old = hit.tier;
+            hit.tier = 1; hit.r = hit.rT = TIERS[1].r; hit.setMass(hit.r);
+            if (apart()) return 1;
+            hit.tier = old; hit.r = hit.rT = TIERS[old].r; hit.setMass(hit.r);
+          }
+          continue;
+        }
+        const front = [];
+        for (let deg = -50; deg <= 50; deg += 10) { const h = probe(deg); if (h && front.indexOf(h) < 0) front.push(h); }
+        if (front.length < 2) continue;
+        const small = front.filter((b) => b.tier <= 3);
+        return FC.pick(small.length ? small : front).tier;
       }
-      place([[3, 0, 0], [1, 0, 190], [2, -205, -60], [1, 0, -190], [2, 205, -60]]);
-      settle();
+      // the fallback (practically never): the old fixed cross, one cake in the middle, twins opposite each other
+      W.clear();
+      [[3, 0, 0], [1, 0, 190], [2, -205, -60], [1, 0, -190], [2, 205, -60]].forEach(([t, x, y], i) => {
+        const b = new Body(t, TIERS[t].r, x, y);
+        b.age = 3; b.pop = -0.1 - i * 0.09;
+        W.add(b);
+      });
+      settle(100);
+      return 1;
     },
 
-    // new cakes: Macaron, Cherry Bite, Cupcake and (rarely) Lemon Tart – the Blossom Cake joins once a Blueberry Cake exists
+    // new cakes: Macaron, Cherry Bite, Cupcake and (rarely) Lemon Tart – the Blossom Cake joins once a Peach Cake exists
     randTier() {
-      const maxT = FC.clamp(this.maxTier - 4, 4, 5);
+      const maxT = FC.clamp(this.maxTier - 3, 4, 5);
       const w = [32, 30, 24, 14, 8];
       let sum = 0;
       for (let i = 0; i < maxT; i++) sum += w[i];
@@ -595,7 +642,7 @@
       this.mergeFX(nb, nt, combo, pts);
       AU.merge(nt, combo);
       // a tiny freeze sells the pop
-      this.hitstop = Math.min(0.13, this.hitstop + 0.045 + nt * 0.004);
+      this.hitstop = Math.min(0.1, this.hitstop + 0.035 + nt * 0.003); // lighter than v0.5: chains are common now and must keep flowing
       if (navigator.vibrate) try { navigator.vibrate(nt >= 6 ? 22 : 10); } catch (e) { /* ignore */ }
       this.reach(nt);
       this.cheer(nt >= 5 || combo >= 3 ? 1.2 : 0.6);
@@ -780,6 +827,9 @@
     // stages: every order is a number of merges; filling it starts the whirl
     // ------------------------------------------------------------
     bakeProgress() {
+      // merges the whirl makes by itself are scored, but they do not fill the order (otherwise a lucky whirl
+      // completes the next order on the spot, and the player watches whirl after whirl)
+      if (this.whirl) { this.whirl.merges++; return; }
       this.stageMerges++;
       FC.UI.setStage(this.stage, this.stageMerges, this.stageGoal);
       if (this.stageMerges >= this.stageGoal && !this.stageDone && !this.whirl) {
@@ -797,7 +847,7 @@
       this.stageDoneT += dt;
       let busy = this.pending.length > 0;
       for (const b of this.world.bodies) if (!b.dead && !b.sensor && b.speed() > 260) { busy = true; break; }
-      if (busy && this.stageDoneT < 2.5) return;
+      if (busy && this.stageDoneT < 1.4) return;
       this.startWhirl();
     },
 
@@ -809,7 +859,7 @@
       this.stage++;
       this.stageMerges = 0;
       this.stageGoal = stageGoal(this.stage);
-      this.whirl = { t: 0, omega: 0, merges: 0, shown: false, kicked: false };
+      this.whirl = { t: 0, omega: 0, merges: 0, shown: false, kicked: false, batch: this.deliverySize(), delivered: 0, nextDrop: 0 };
       this.pending = [];
       this.danger = 0; this.dangerBody = null;
       for (const b of this.world.bodies) { b.danger = 0; if (!b.sensor) { b.expr = 'wee'; b.exprT = 2.4; } }
@@ -854,6 +904,12 @@
         }
       }
       for (const b of W.bodies) { b.danger = 0; b.age = Math.min(b.age, 0.4); }
+      // the delivery: fresh cakes tumble down the spring at the back while everything is spinning, and get mixed in
+      if (w.delivered < w.batch && w.t > T.up + 0.1 && w.t < T.down && w.t >= w.nextDrop) {
+        w.nextDrop = w.t + 0.18;
+        w.delivered++;
+        this.deliverCake();
+      }
       if (w.t > 0.2 && w.t < T.down && Math.random() < dt * 30) {
         const a = Math.random() * TAU, rr = 300 + Math.random() * 650;
         FX.burst(Math.cos(a) * rr, Math.sin(a) * rr, { n: 2, colors: ['#ffffff', '#d6f6ff', '#fff3a8'], speed: [60, 260], size: [6, 12], kinds: ['star', 'drop'], life: [0.4, 0.8], gravity: -40 });
@@ -865,12 +921,13 @@
         if (n % 2 === 0) { this.jokers++; gift = '+1 Magic Cake'; kind = 'joker'; } else { this.wands++; gift = '+1 Wand'; kind = 'wand'; }
         FC.UI.updatePowers(true);
         const nextTheme = themeForStage(n);
+        const fresh = w.batch > 0 ? ' · ' + w.batch + ' fresh cakes' : '';
         if (nextTheme !== S.theme) {
           S.load(nextTheme).then(() => {
             S.setTheme(nextTheme, false);
-            FC.UI.banner('Welcome to ' + S.themeName(nextTheme) + '!', 'Stage ' + n + ' · ' + gift);
+            FC.UI.banner('Welcome to ' + S.themeName(nextTheme) + '!', 'Stage ' + n + fresh + ' · ' + gift);
           });
-        } else FC.UI.banner('Stage ' + n + '!', 'New order: ' + this.stageGoal + ' merges · ' + gift);
+        } else FC.UI.banner('Stage ' + n + '!', 'Order: ' + this.stageGoal + ' merges' + fresh + ' · ' + gift);
         const upcoming = themeForStage(n + 1);
         if (upcoming !== S.theme) S.load(upcoming);
         AU.levelUp();
@@ -889,6 +946,50 @@
           for (const b of W.bodies) b.age = -1.4; // a long grace: the ring only counts again after 2.5 s
         }
       }
+    },
+
+    // how full is the calm pool? sum of the cakes' areas over the pool's area (a packed pool reaches ~0.53)
+    poolFill() {
+      let area = 0;
+      for (const b of this.world.bodies) if (!b.dead && !b.sensor) area += b.rT * b.rT;
+      return area / (this.ring * this.ring);
+    },
+    // how many small cakes the castle sends with the next whirl: enough to top the pool up to the stage's target fill
+    deliverySize() {
+      const want = targetFill(this.stage);
+      const fill = this.poolFill();
+      if (fill >= want) return 0;
+      const one = (TIERS[2].r * TIERS[2].r) / (this.ring * this.ring); // a Cherry Bite's share
+      let n = Math.round((want - fill) / one);
+      // big cakes pack loosely: when the cluster already reaches out towards the ring, the castle sends less
+      // (cakes beyond the ring are riders on the current, not the cluster – they do not count)
+      let edge = 0;
+      for (const b of this.world.bodies) {
+        if (b.dead || b.sensor) continue;
+        const e = Math.hypot(b.x, b.y) + b.rT;
+        if (e <= this.ring + 20) edge = Math.max(edge, e);
+      }
+      const reach = edge / this.ring;
+      n = Math.min(n, reach > 0.9 ? 0 : reach > 0.82 ? 1 : reach > 0.74 ? 2 : reach > 0.66 ? 4 : reach > 0.58 ? 6 : DELIVERY_MAX);
+      return FC.clamp(n, 0, DELIVERY_MAX);
+    },
+    // one fresh cake tumbles down the spring at the back of the pond and joins the current
+    deliverCake() {
+      const tier = FC.pick([1, 1, 1, 1, 2, 2, 2, 3]);
+      const r = TIERS[tier].r;
+      const x = FC.rand(-60, 60), y = -CFG.R + r + 30;
+      const b = new Body(tier, r, x, y);
+      this.world.flowAt(x, y, WTMP, r);
+      b.vx = WTMP.x * 0.8 + FC.rand(-80, 80); b.vy = WTMP.y * 0.8 + 180;
+      b.launched = true;
+      b.age = 0;
+      b.pop = 0;
+      b.expr = 'wee'; b.exprT = 1.6;
+      b.sq = -0.2; b.sqa = Math.PI / 2;
+      this.world.add(b);
+      FX.ripple(x, y + r * 0.5, r, 0.8, 420);
+      FX.burst(x, y, { n: 12, colors: ['#ffffff', '#c9f6ff', '#d6f6ff'], speed: [150, 500], size: [8, 15], kinds: ['drop', 'dot'], life: [0.3, 0.7], gravity: 300, up: 120, drag: 2.5 });
+      AU.plip(tier);
     },
 
     maybeBubble() {
@@ -988,7 +1089,7 @@
         case 'order':
           if (c.t > 0.2) {
             c.step = 'order2'; c.t = 0;
-            this.coachSay('order', 'Fill the order: ' + this.stageGoal + ' merges', 'Then the pond whirls and the next stage begins');
+            this.coachSay('order', 'Fill the order: ' + this.stageGoal + ' merges', 'Then the pond whirls, and fresh cakes tumble in');
             FC.UI.pulseStage();
           }
           break;
@@ -1276,6 +1377,10 @@
       }
       this.danger = max;
       this.dangerBody = worst;
+      // the fuller the pond, the sooner it overflows: a cake stuck on a bump of a half-empty cluster gets more time
+      // (the pool turns and the next flicks jostle it free) than one resting on a cluster that fills the pool
+      const fill = this.poolFill();
+      this.dangerLimit = CFG.DANGER_TIME + Math.max(0, 0.4 - fill) * 25;
       if (max > CFG.WARN_AT) {
         this.warnT -= dt;
         if (this.warnT <= 0) { AU.danger(); this.warnT = 0.9; }
@@ -1284,13 +1389,16 @@
           const n = FC.store.get('dangerTips', 0);
           if (n < 3) {
             FC.store.set('dangerTips', n + 1);
-            FC.UI.coach('Too full!', this.wands > 0 ? 'Merge cakes to make room – or use your Wand' : 'Merge cakes to make room', { time: 3200 });
+            const wand = this.wands > 0 ? ' – or use your Wand' : '';
+            // a cake caught in the current with room to spare is not the same problem as a full pond
+            if (this.poolFill() < 0.4) FC.UI.coach('Caught in the current!', 'A cake outside the ring overflows: merge it' + wand, { time: 3200 });
+            else FC.UI.coach('Too full!', 'Merge cakes to make room' + wand, { time: 3200 });
           }
         }
         if (this.tilly.mood !== 'cheer') { this.tilly.mood = 'worried'; this.tilly.moodT = 0.3; }
       }
       FC.UI.setDanger(max > CFG.WARN_AT);
-      if (max >= CFG.DANGER_TIME) this.gameOver(worst);
+      if (max >= this.dangerLimit) this.gameOver(worst);
     },
 
     // title screen: Tilly plays by herself with the same sling the player uses
@@ -1475,7 +1583,7 @@
       if (this.hint) this.drawHand(ctx);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (this.danger > CFG.WARN_AT && this.state === 'playing') {
-        const k = FC.clamp((this.danger - CFG.WARN_AT) / (CFG.DANGER_TIME - CFG.WARN_AT), 0, 1);
+        const k = FC.clamp((this.danger - CFG.WARN_AT) / ((this.dangerLimit || CFG.DANGER_TIME) - CFG.WARN_AT), 0, 1);
         const pulse = 0.5 + 0.5 * Math.sin(this.t * (6 + k * 8));
         const g = ctx.createRadialGradient(this.W / 2, this.H / 2, Math.min(this.W, this.H) * 0.35, this.W / 2, this.H / 2, Math.max(this.W, this.H) * 0.75);
         g.addColorStop(0, 'rgba(255,60,120,0)');
@@ -1512,7 +1620,7 @@
     drawDangerRing(ctx) {
       const pr = this.ring * S.s;
       const K = S.K;
-      const k = FC.clamp(this.danger / CFG.DANGER_TIME, 0, 1);
+      const k = FC.clamp(this.danger / (this.dangerLimit || CFG.DANGER_TIME), 0, 1);
       const rp = this.ringPulse > 0 ? 0.5 + 0.5 * Math.sin(this.ringPulse * 7) : 0;
       ctx.save();
       ctx.lineCap = 'round';
@@ -1559,7 +1667,7 @@
       ctx.restore();
       const db = this.dangerBody;
       if (db && this.danger > CFG.WARN_AT && !db.dead) {
-        const left = Math.max(0, CFG.DANGER_TIME - this.danger);
+        const left = Math.max(0, (this.dangerLimit || CFG.DANGER_TIME) - this.danger);
         const p = S.w2s(db.x, db.y);
         const r = db.r * S.s;
         const n = Math.ceil(left);
@@ -1569,7 +1677,7 @@
         ctx.translate(p.x, y);
         ctx.scale(sc, sc);
         ctx.beginPath();
-        ctx.arc(0, 0, 15, 0, TAU);
+        ctx.arc(0, 0, n >= 10 ? 17 : 15, 0, TAU);
         ctx.fillStyle = '#ff4f86';
         ctx.fill();
         ctx.lineWidth = 3;

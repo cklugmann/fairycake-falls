@@ -1,11 +1,11 @@
 # Fairycake Falls
 
-Flick cute cakes from a little slingshot into a magical floating pond.
-Identical cakes merge into bigger ones – from a tiny **Macaron** all the way up
-to the **Royal Fairycake**. Read the water: a current races round the edge and
-carries slow cakes with it, the calm pool inside the ring draws them in. Fill the
-castle's orders to make the pond whirl, and keep the cakes in the calm water, or
-the pond overflows!
+Flick cute cakes from a little slingshot into a magical floating pond that is
+already full of cakes. Identical cakes merge into bigger ones – from a tiny
+**Macaron** all the way up to the **Royal Fairycake**. Read the water: a current
+races round the edge and carries slow cakes with it, the calm pool inside the ring
+draws them in. Fill the castle's orders to make the pond whirl (and fresh cakes
+tumble down the spring), and keep the cakes in the calm water, or the pond overflows!
 
 Your first game is a short guided tour that shows the gestures and the goal.
 
@@ -42,10 +42,10 @@ cluster; a soft one curves and lands gently. Merge with every flick to build a
 **hot streak** that multiplies your points.
 
 Every stage is an **order** of merges (shown in the pill at the top). Fill it and
-the pond **whirls**: the cluster is shuffled, your multiplier rises, a gift arrives,
-and every third stage the island drifts into a new world. The calm pool widens with
-every bigger cake you bake. The ladder at the bottom shows the whole cake chain and
-how far you got this run.
+the pond **whirls**: the cluster is shuffled, a few fresh cakes tumble down the spring
+and join in, your multiplier rises, a gift arrives, and every third stage the island
+drifts into a new world. The calm pool widens with every bigger cake you bake. The
+ladder at the bottom shows the whole cake chain and how far you got this run.
 
 To see the guided tour again: **How to play → Show me the tour again**.
 
@@ -64,7 +64,9 @@ js/audio.js         Web Audio sound effects + music-box lullaby
 js/ui.js            HUD, coach tips, cake ladder, menus, Cake Book
 js/main.js          bootstrap
 assets/             pre-painted background layers (WebP) + manifest.js
-tools/              asset generator (re-creates everything in assets/), bot.js balance harness
+tools/              asset generator (re-creates everything in assets/), bot.js balance harness,
+                    snap.js screenshot replay, physlab.js physics experiments (Node, no browser),
+                    check-start.js start-layout check
 DESIGN.md           game design: rules, numbers, art direction, next steps
 ```
 
@@ -85,3 +87,18 @@ You can also open `tools/generate.html` in a browser to watch it paint.
 
 Fredoka font © The Fredoka Project Authors, SIL Open Font License 1.1 (`fonts/OFL.txt`).
 Everything else (code, art and sound) is generated procedurally for this project.
+
+## Balance harness
+
+```
+npm i -D playwright                 # once (Chromium is downloaded by Playwright)
+node tools/bot.js 4 400 1           # 4 careful games, up to 400 flicks each
+node tools/bot.js 4 400 0.5         # 4 sloppy games (half of the flicks are random lobs)
+node tools/snap.js out 1 10 40 80   # screenshots of a bot game at these flicks
+node tools/physlab.js all           # cluster physics experiments, no browser needed
+```
+
+`bot.js` prints one JSON line per game plus a time course in buckets of ten flicks
+(cakes in the pond, fill of the pool, merges on offer, hearts in the preview, warnings).
+Set `PW_CHROME=/path/to/chrome` to use a Chromium you already have and `BOT_PAR=2` to
+run games in parallel.

@@ -6,7 +6,12 @@
 
    usage: npm i -D playwright && node tools/bot.js <games> [maxShots] [skill]
           skill 1 = careful, 0.5 = sloppy (half of the flicks are random lobs)
-   prints one JSON line per game (shots, score, stage, merges, biggest cake, whirl stats). */
+          env BOT_PAR = games run in parallel (default 3), PW_CHROME = path to a Chromium binary
+   prints one JSON line per game (shots, score, stage, merges, biggest cake, whirl stats), averages, and the
+   time course in buckets of 10 flicks: cakes in the pond, how full the pool is (sum of cake areas over the
+   pool area; a packed pool reaches ~53 %), how far the cluster reaches (% of the ring), how often a merge was on offer,
+   how often a flick merged (heart% = a direct match was in the preview, the merge a human sees), how often a
+   warning was on (a cake beyond the ring for more than 1.5 s). */
 const { chromium } = require('playwright');
 const path = require('path');
 
@@ -32,13 +37,14 @@ const BOT = `
   function waitSettle(max) { let t = 0; while (t < max && (!settled() || G.whirl || G.stageDone)) { G.update(DT); t += DT; } return t; }
   function search(tier) {
     const r = T[tier].r, L = G.anchorW(tier);
-    let best = null;
+    let best = null, direct = 0;
     for (let deg = -76; deg <= 76; deg += 3) {
       for (const p of [0.18, 0.26, 0.34, 0.42, 0.5, 0.58, 0.68, 0.8, 0.92]) {
         const a = deg * Math.PI / 180, sp = P.speedForPower(p);
         const pr = W.predict(L.x, L.y, Math.sin(a) * sp, -Math.cos(a) * sp, r, tier, { maxT: 3.4, maxLen: 3000, spacing: 60 });
         let score = 0, info = null;
         if (pr.hit && !pr.hit.body.sensor) {
+          if (pr.hit.body.tier === tier) direct++; // a heart in the preview: what a human sees
           const lk = W.lookAhead(pr.hit, { tier, r }, { time: 1.1, step: 1/100, tierR: (t) => T[t].r, maxTier: 11 });
           for (const ev of lk.events) score += ev.kind === 'royal' ? 50 : (ev.tier || 2) * 2;
           // penalise pushing cakes outwards
@@ -54,6 +60,7 @@ const BOT = `
         if (!best || score > best.score) best = { deg, p, score, info, hit: !!pr.hit, ride: !!(pr.hit && pr.hit.drift && pr.land && Math.abs(Math.atan2(pr.land.y, pr.land.x) - Math.atan2(pr.hit.y, pr.hit.x)) > 0.6) };
       }
     }
+    best.direct = direct;
     return best;
   }
   function play(opts) {
@@ -62,7 +69,7 @@ const BOT = `
     const skill = o.skill == null ? 1 : o.skill; // 1 = careful, 0.5 = sloppy
     G.newGame();
     stepFor(1.2);
-    const log = { whirls: [], danger: 0, waits: 0, rides: 0, disp: 0, dispN: 0, knocks: 0, mergeShots: 0 };
+    const log = { whirls: [], danger: 0, waits: 0, rides: 0, disp: 0, dispN: 0, knocks: 0, mergeShots: 0, course: [], firstDanger: null, firstWarn: null, noOffer: 0, directOffer: 0 };
     let shots = 0, simT = 0;
     while (G.state === 'playing' && shots < maxShots) {
       simT += waitSettle(4);
@@ -71,11 +78,15 @@ const BOT = `
       if (G.danger > 1.5 && G.wands > 0 && G.dangerBody) { G.wandMode = true; const p = FC.Scene.w2s(G.dangerBody.x, G.dangerBody.y); G.wandTap(p.x, p.y - G.dangerBody.r * FC.Scene.s * 0.45); G.update(DT); continue; }
       let tier = G.queue[0];
       let best = search(tier);
+      let direct = best.direct;
       // swap?
       if (G.queue.length > 1 && G.queue[1] !== tier && Math.random() < skill) {
         const alt = search(G.queue[1]);
+        direct += alt.direct;
         if (alt.score > best.score + 0.5) { G.swap(); tier = G.queue[0]; best = alt; }
       }
+      if (direct > 0) log.directOffer++;
+      if (best.score <= 0) log.noOffer++;
       // a sloppy player sometimes just lobs the cake somewhere sensible
       if (Math.random() > skill) { best = { deg: (Math.random() - 0.5) * 60, p: 0.3 + Math.random() * 0.4, score: 0 }; }
       // nothing bakes right now: a patient player waits a little for the pile to turn (shooting nothing is not
@@ -117,7 +128,15 @@ const BOT = `
       if (nMoved) { log.disp += moved / nMoved; log.dispN++; }
       if (knocked) log.knocks++;
       if (G.danger > 0) log.danger++;
+      if (G.danger > 0 && log.firstDanger == null) log.firstDanger = shots;
+      if (G.danger > 1.5 && log.firstWarn == null) log.firstWarn = shots;
       simT += 1.0; // aiming time budget per shot (not simulated)
+      // the time course: how full is the pool, how many cakes, was a merge on offer?
+      {
+        let area = 0, n = 0, maxEdge = 0;
+        for (const b of W.bodies) if (!b.dead && !b.sensor) { area += b.rT * b.rT; n++; maxEdge = Math.max(maxEdge, Math.hypot(b.x, b.y) + b.r); }
+        log.course.push({ shot: shots, n, fill: +(area / (G.ring * G.ring)).toFixed(3), edge: Math.round(maxEdge / G.ring * 100), offer: best.score > 0 ? 1 : 0, direct: direct > 0 ? 1 : 0, merged: G.merges > m0 ? 1 : 0, danger: +G.danger.toFixed(1), stage: G.stage, t: Math.round(simT) });
+      }
       // observe whirls
       if (G.whirl && !log.whirls.find((w) => w.stage === G.stage)) {
         const before = W.bodies.filter((b) => !b.dead && !b.sensor).length;
@@ -135,7 +154,7 @@ const BOT = `
     const c = G.culprit;
     const culprit = c ? { tier: c.tier, x: Math.round(c.x), y: Math.round(c.y), vx: Math.round(c.vx), vy: Math.round(c.vy), r: c.r, age: +c.age.toFixed(2), rCalm: Math.round(W.rCalm), inflowK: W.inflowK, stageDone: G.stageDone } : null;
     const all = W.bodies.filter((b) => !b.dead).map((b) => [b.tier, Math.round(b.x), Math.round(b.y), Math.round(b.r), b.sensor ? 'S' : '']);
-    return { state: G.state, shots, score: G.score, stage: G.stage, merges: G.merges, maxTier: G.maxTier, simT: Math.round(simT), bodies: W.count((b) => !b.sensor), tiers, culprit, all, whirls: log.whirls, waits: log.waits, rides: log.rides, meanDisp: Math.round(log.disp / (log.dispN || 1)), knockShots: log.knocks, dangerShots: log.danger, mergeShots: log.mergeShots };
+    return { state: G.state, shots, score: G.score, stage: G.stage, merges: G.merges, maxTier: G.maxTier, simT: Math.round(simT), bodies: W.count((b) => !b.sensor), tiers, culprit, all, whirls: log.whirls, waits: log.waits, rides: log.rides, meanDisp: Math.round(log.disp / (log.dispN || 1)), knockShots: log.knocks, dangerShots: log.danger, mergeShots: log.mergeShots, noOffer: log.noOffer, directOffer: log.directOffer, firstDanger: log.firstDanger, firstWarn: log.firstWarn, course: log.course };
   }
   window.BOT = { play, search, stepFor, waitSettle };
   window.BOTsettled = settled;
@@ -146,22 +165,39 @@ const BOT = `
   const games = +(process.argv[2] || 3);
   const maxShots = +(process.argv[3] || 400);
   const skill = +(process.argv[4] || 1);
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
-  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('CONSOLE', m.type(), m.text()); });
-  await page.goto('file://' + path.resolve(__dirname, '..', 'index.html'));
-  await page.waitForFunction(() => window.FC && FC.Game && FC.Game.state === 'title', null, { timeout: 15000 });
-  await page.evaluate(BOT);
+  const par = +(process.env.BOT_PAR || 3);
+  const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || undefined });
   const results = [];
-  for (let i = 0; i < games; i++) {
+  const runOne = async (i) => {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
+    page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('CONSOLE', m.type(), m.text()); });
+    await page.goto('file://' + path.resolve(__dirname, '..', 'index.html'));
+    await page.waitForFunction(() => window.FC && FC.Game && FC.Game.state === 'title', null, { timeout: 15000 });
+    await page.evaluate(BOT);
     const t0 = Date.now();
     const r = await page.evaluate(([m, sk]) => window.BOT.play({ maxShots: m, skill: sk }), [maxShots, skill]);
     r.wall = ((Date.now() - t0) / 1000).toFixed(1) + 's';
-    results.push(r);
-    console.log(JSON.stringify({ ...r, all: undefined, whirls: r.whirls.map((w) => [w.stage, w.shots, w.before, w.merges, w.edgeAfter, w.outside]) }));
+    results[i] = r;
+    console.log(JSON.stringify({ ...r, all: undefined, course: undefined, whirls: r.whirls.map((w) => [w.stage, w.shots, w.before, w.merges, w.edgeAfter, w.outside]) }));
+    await page.close();
+  };
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(par, games) }, async () => { while (next < games) await runOne(next++); }));
+  const avg = (k) => (results.reduce((s, r) => s + (r[k] || 0), 0) / results.length).toFixed(1);
+  console.log('AVG shots', avg('shots'), 'score', avg('score'), 'stage', avg('stage'), 'merges', avg('merges'), 'maxTier', avg('maxTier'), 'simT', avg('simT'),
+    'mergeShots%', (100 * results.reduce((s, r) => s + r.mergeShots, 0) / results.reduce((s, r) => s + r.shots, 0)).toFixed(0),
+    'noOffer%', (100 * results.reduce((s, r) => s + r.noOffer, 0) / results.reduce((s, r) => s + r.shots, 0)).toFixed(0),
+    'heart%', (100 * results.reduce((s, r) => s + (r.directOffer || 0), 0) / results.reduce((s, r) => s + r.shots, 0)).toFixed(0),
+    'firstDanger', avg('firstDanger'), 'firstWarn', avg('firstWarn'));
+  // the time course in buckets of 10 shots: cakes in the pond, fill of the pool, merges on offer, danger
+  const B = 10, buckets = [];
+  for (const r of results) for (const c of r.course) {
+    const k = Math.floor((c.shot - 1) / B);
+    const b = buckets[k] || (buckets[k] = { n: 0, bodies: 0, fill: 0, edge: 0, offer: 0, direct: 0, merged: 0, danger: 0, games: new Set() });
+    b.n++; b.bodies += c.n; b.fill += c.fill; b.edge += c.edge; b.offer += c.offer; b.direct += c.direct || 0; b.merged += c.merged; b.danger += c.danger > 1.5 ? 1 : 0; b.games.add(r);
   }
-  const avg = (k) => (results.reduce((s, r) => s + r[k], 0) / results.length).toFixed(1);
-  console.log('AVG shots', avg('shots'), 'score', avg('score'), 'stage', avg('stage'), 'merges', avg('merges'), 'maxTier', avg('maxTier'), 'simT', avg('simT'));
+  console.log('shots   games  cakes  fill%  edge%  offer%  heart%  merge%  warn%');
+  buckets.forEach((b, k) => console.log(String(k * B + 1).padStart(3) + '-' + String(k * B + B).padEnd(5), String(b.games.size).padStart(3), String((b.bodies / b.n).toFixed(1)).padStart(7), String((100 * b.fill / b.n).toFixed(0)).padStart(6), String((b.edge / b.n).toFixed(0)).padStart(6), String((100 * b.offer / b.n).toFixed(0)).padStart(7), String((100 * b.direct / b.n).toFixed(0)).padStart(7), String((100 * b.merged / b.n).toFixed(0)).padStart(7), String((100 * b.danger / b.n).toFixed(0)).padStart(7)));
   await browser.close();
 })();

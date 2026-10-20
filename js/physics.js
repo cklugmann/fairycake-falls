@@ -12,7 +12,7 @@
      the current (otherwise the current would peel them off, and nothing could be aimed at).
    - The pile is held together gently, so every hit really moves it; a hard flick can
      knock a cake out into the current.
-   Circle collisions are billiards-like; identical cakes attract a little ("fairy magnetism").
+   Circle collisions are billiards-like; identical cakes attract a little ("fairy magnetism") and merge when they touch.
    World units: inner pond radius R = 1000, centre (0,0), y points down. */
 (function () {
   'use strict';
@@ -22,7 +22,7 @@
   const CFG = {
     R: 1000,               // inner pond radius
     DANGER: 880,           // the biggest the calm pool (dotted ring) gets; a cake's edge must not rest beyond it
-    DANGER_TIME: 4.0,      // seconds a cake may rest beyond the ring
+    DANGER_TIME: 5.0,      // seconds a cake may rest beyond the ring (time enough to read the warning and act)
     WARN_AT: 1.5,          // ... the warning starts after this long (a short ride along the edge stays quiet)
     // skimming
     FRICTION: 850,         // u/s^2, relative to the water: even glide, crisp stop (and shoved cakes slide a little)
@@ -35,28 +35,33 @@
     INFLOW: 190,           // u/s at the ring (x sizeK) ...
     INFLOW_CORE: 240,      // ... reaching INFLOW_MIN (x sizeK) in the middle
     INFLOW_MIN: 90,
-    SIZE_K0: 0.85,         // inflow multiplier by size: K0 + K1 * r/300 (Macaron 0.95, Peach 1.2, Royal 1.5) – a mild sorting
+    SIZE_K0: 0.85,         // inflow multiplier by size: K0 + K1 * r/300 (Macaron 0.96, Peach 1.11, Royal 1.24) – a mild sorting
     SIZE_K1: 0.45,
-    OMEGA_MIN: 0.1,        // the calm middle (and the pile in it) turns at this rate on stage 1 (rad/s) ...
-    OMEGA_MAX: 0.2,        // ... and from stage 10 on
+    OMEGA_MIN: 0.15,       // the calm middle (and the pile in it) turns at this rate on stage 1 (rad/s; a lap takes ~40 s) ...
+    OMEGA_MAX: 0.26,       // ... and from stage 10 on (~24 s): the back of the cluster keeps coming round to the sling
     // the rim current
     VRIM_MIN: 520,         // speed of the rim current on stage 1 (u/s; a lap takes ~11 s) ...
     VRIM_MAX: 700,         // ... and from stage 10 on
     INFLOW_BAND: 110,      // u/s – the current only drifts inwards gently, so cakes ride round
-    RING_MIN: 600,         // the calm pool while the biggest cake is a Cupcake ...
-    RING_STEP: 46,         // ... grows by this much with every bigger cake, up to DANGER (Fairy Torte)
+    RING_MIN: 560,         // the calm pool while the biggest cake is a Cupcake (a populated start cluster fills ~40 % of it) ...
+    RING_STEP: 36,         // ... grows by this much with every bigger cake (848 at the Royal Fairycake): one cake of every tier just about
+                           // fills the pool, so the late game is about merging the big ones (Magic Cakes!)
     BAND_RAMP: 120,        // width of the transition from calm pool to rim current
     // collisions
     REST: 0.35,            // cake-cake bounciness (sponge cakes: a hit shoves rather than bounces)
     MASS_EXP: 1.4,         // mass ~ r^MASS_EXP: fairy cakes are lighter than their size (2 = real discs), so a flick can shove big ones
-    SPACE: 0.3,            // floating cakes keep a little personal space: gap = SPACE x smaller radius ...
-    SPACE_K: 0.045,        // ... restored by this fraction per step (a soft cushion of water: a drift cannot close it, a flick can)
-    TWIN_MOVE: 120,        // fairy magnetism only pulls while one of the twins is moving faster than this (resting twins wait for a push)
+    SPACE: 0.08,           // floating cakes keep a sliver of personal space: gap = SPACE x smaller radius (a compact cluster that does not look pressed) ...
+    SPACE_K: 0.045,        // ... restored by this fraction per step (a soft cushion of water)
+    CUSHION_V: 260,        // the cushion absorbs approaches up to this speed (u/s) fully and lets a shove (2x) through
+    TWIN_MOVE: 0,          // fairy magnetism pulls while one of the twins moves faster than this; 0 = resting twins find each other too
+                           // (v0.6: two identical cakes side by side with a gap read as a bug, not as a plan – like Suika, touching twins always merge)
     REST_RIM: 0.6,         // rim bounciness
     REST_MIN_SPEED: 110,   // below this, no bounce (calm packing)
     TWIN_RANGE: 0.4,       // fairy magnetism range (x smaller radius, as gap width): forgiveness for near-misses of a flick
     TWIN_ACC: 2600,
     GROW_RATE: 340,        // u/s – growth speed of a freshly merged cake
+    NUDGE: 150,            // u/s – the little burst a merge gives its neighbours (300 in v0.5: with twins that merge at rest it
+                           // reshuffled the cluster and set off chains nobody planned)
     // flicks: pull length maps linearly to travel distance
     D_MIN: 160,            // distance of the gentlest flick (u)
     D_MAX: 2400,           // distance of a full-power flick (crosses the pond and bounces back)
@@ -253,7 +258,7 @@
           const dx = o.x - x, dy = o.y - y, d = Math.sqrt(dx * dx + dy * dy) || 1;
           const R = nb.rT * 2.3 + o.r;
           if (d >= R) continue;
-          const k = 300 * (1 - d / R) * Math.min(1.5, nb.m / (o.m + nb.m) * 2);
+          const k = CFG.NUDGE * (1 - d / R) * Math.min(1.5, nb.m / (o.m + nb.m) * 2);
           o.vx += (dx / d) * k; o.vy += (dy / d) * k;
           o.sqv += 2.2;
         }
@@ -410,10 +415,10 @@
         b.touch = false;
       }
 
-      // 2) fairy magnetism: a moving cake is drawn to a twin with a small gap (resting twins wait for a push –
-      //    except during the whirl, which brings twins together on purpose)
+      // 2) fairy magnetism: a cake is drawn to a twin with a small gap – forgiveness for a near miss, and (since
+      //    TWIN_MOVE is 0) the way resting twins that end up side by side find each other; the whirl boosts it
       const mv2 = C.TWIN_MOVE * C.TWIN_MOVE;
-      const tk = this.twinK, always = this.twinAlways;
+      const tk = this.twinK, always = this.twinAlways || C.TWIN_MOVE <= 0;
       for (let i = 0; i < n; i++) {
         const a = B[i];
         if (a.dead || a.tier < 1) continue;
@@ -461,13 +466,27 @@
             const d2 = dx * dx + dy * dy;
             if (d2 >= lim * lim) continue;
             if (d2 >= rs * rs) {
-              // not touching, but closer than their personal space: ease them apart (both at rest-ish: a soft cushion)
-              if (it === 0 && !this.free && !a.sensor && !b.sensor && !a.anchored && !b.anchored) {
+              // not touching, but closer than their personal space: ease them apart (a soft cushion of water) and
+              // take the approach speed out (an inelastic contact at the cushion's edge). Without that the drain keeps
+              // pressing resting cakes through the cushion into each other – a cluster of 20 bumped ~100 times a
+              // second, with wobbles and bonk sounds (v0.5). A flick still shoves: the impulse passes on, only the
+              // bounce is gone. Twins reach across the cushion by fairy magnetism and merge.
+              if (it === 0 && !this.free && !a.sensor && !b.sensor && !a.anchored && !b.anchored && a.tier !== 0 && b.tier !== 0) {
                 const d = Math.sqrt(d2) || 0.0001;
                 const nx = dx / d, ny = dy / d;
                 const corr = (lim - d) * C.SPACE_K / (a.im + b.im);
                 a.x -= nx * corr * a.im; a.y -= ny * corr * a.im;
                 b.x += nx * corr * b.im; b.y += ny * corr * b.im;
+                if (!(a.tier >= 1 && a.tier === b.tier && (this.twinAlways || C.TWIN_MOVE <= 0))) {
+                  const vn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+                  if (vn < 0) {
+                    // slow approaches (the drain pressing the cluster together) are absorbed, a shove passes through
+                    const k = FC.clamp(1 - (-vn - C.CUSHION_V) / C.CUSHION_V, 0, 1);
+                    const jn = (-vn / (a.im + b.im)) * k;
+                    a.vx -= nx * jn * a.im; a.vy -= ny * jn * a.im;
+                    b.vx += nx * jn * b.im; b.vy += ny * jn * b.im;
+                  }
+                }
               }
               continue;
             }
