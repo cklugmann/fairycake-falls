@@ -61,7 +61,7 @@ js/cakes.js         cake tiers + procedural cake art and faces
 js/scene.js         background composition, tilted projection, waterfalls, water FX
 js/game.js          game rules, slingshot input, tutorial coach, scoring, levels, power-ups, rendering
 js/fx.js            particles, ripples, popups
-js/audio.js         Web Audio sound effects + "Tilly's Lullaby" (a composed, generative music-box waltz)
+js/audio.js         Web Audio sound effects + "Tilly's Lullaby" (a composed waltz for celesta, harp, pad, flute)
 js/ui.js            HUD, coach tips, menus, Cake Book (also mid-game)
 js/main.js          bootstrap
 assets/             pre-painted background layers (WebP) + manifest.js
@@ -97,7 +97,9 @@ node tools/bot.js 4 400 1           # 4 careful games, up to 400 flicks each
 node tools/bot.js 4 400 0.5         # 4 sloppy games (half of the flicks are random lobs)
 node tools/snap.js out 1 10 40 80   # screenshots of a bot game at these flicks
 node tools/physlab.js all           # cluster physics experiments, no browser needed
-node tools/render-music.js out.wav 75   # render the music to a WAV file (to listen outside the game)
+node tools/render-music.js out.wav 110  # render the music to a WAV file (to listen outside the game)
+node tools/render-music.js play.wav 60 --sfx   # ... with a scripted minute of game sounds on top
+python3 tools/dissonance.py out.wav     # how often strong notes clash (semitone / tritone), frame by frame
 ```
 
 `bot.js` prints one JSON line per game plus a time course in buckets of ten flicks

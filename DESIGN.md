@@ -1,4 +1,4 @@
-# Fairycake Falls – Game Design (prototype v0.6.1)
+# Fairycake Falls – Game Design (prototype v0.6.2)
 
 ## Pitch
 A cosy, endless flick-and-merge game. You flick cakes from a little slingshot
@@ -277,28 +277,48 @@ one cake of every tier 1–11 reaches 94–100 % of the Royal's ring (848).
 - **Backgrounds** are pre-painted WebP layers: sky, castle island, side islands, main island (back and front), cloud sea and cloud puffs, for four worlds. The deterministic generator in `tools/` produces them. At runtime the layers are composed once per screen size, and only the moving parts (waterfalls, water glints, the whirlpool arms, drifting clouds, sparkles) are animated. The whirlpool arms turn at exactly the physics rate.
 
 ## Audio
-Everything is synthesised with Web Audio (`js/audio.js`), no audio files:
+Everything is synthesised with Web Audio (`js/audio.js`), no audio files.
 
-- **Music – "Tilly's Lullaby" (v0.6.1):** a composed 16-bar tune in G major, 6/8 at a rocking 55 bpm (dotted quarter),
-  looped with variation. Chords: Gmaj7 · Em7 · Cmaj7 · D7sus/D7 · Gmaj7 · Bm7 · Cmaj7 · Am7 · G/B · Cmaj7#11 (the lydian
-  sparkle) · D7sus · Gmaj7. Instruments: a **music box** (sine fundamental with quickly fading partials at 2, 3, 4.16 and
-  5.43× plus the click of the pin), a **harp** rolling over the four chord tones (a triangle whose brightness closes after
-  the pluck), a warm **pad** (two detuned triangles per note under a slowly breathing low-pass, spread across the stereo
-  field), a soft **bass** on the root, and on every other round a little **flute** (sine with a late vibrato and a breath of
-  noise) that takes the tune an octave lower while the harp thins out. **Fairy dust:** sparkles of the G pentatonic high
-  up, now and then, far left or right. The melody runs through a dotted-eighth ping-pong echo; everything shares a
-  **hall** (a convolver with a generated 2.6 s impulse response that gets darker as it fades). The playtest verdict on
-  v0.5's lullaby ("dreadful") came from a relentless eighth-note arpeggio with random notes against the chord, a buzzy
-  pad and no reverb. `node tools/render-music.js out.wav 75` renders the tune to a file.
-- **Pulling the sling (v0.6.1):** no more creaking rubber. An airy shimmer of fairy dust swells and brightens with the
-  tension, and the four detents play a rising G major arpeggio on the music box; full power adds a high sparkle.
-- **Collisions:** soft bonks between cakes, splashy plops on the rim.
-- **Merges:** a puff plus music-box chimes that rise with the combo.
-- **Fanfares:** for discoveries, level-ups and Fairy Magic (music box).
-- **Warnings:** a soft, slightly uneasy two-note call while a cake is in danger.
+**v0.6.2 – one key for everything.** Playtesters called the v0.6.1 lullaby "still too dissonant". Measured with
+`tools/dissonance.py` (an offline render, frame by frame: strong spectral peaks that sound together a semitone, a
+minor ninth or a tritone apart), 44 % of its frames had such a clash. The causes, each fixed:
 
-Music and sound can be toggled separately in the pause menu. Mix (offline render): peak about −11 dBFS, long-term RMS
-about −26 dBFS, no clipping; the master compressor (threshold −14 dB, ratio 3) only catches peaks.
+- *Inharmonic bell partials* (2, 3, 4.16, 5.43 × f) on every chime and melody note → **harmonic celesta** (1, 2, 3, 4, 6 × f).
+- *Major sevenths under a melody on the root* (G4 over Gmaj7, C5 over Cmaj7 = minor seconds) → **plain triads in the
+  pad**, a 6th or 9th only in the harp where the melody leaves room; the lydian F# is gone.
+- *Effects in two other keys* (fanfares in C and E major against a tune in G: G# against G, D# against D, C against B) →
+  **every chime, fanfare and warning in the G major pentatonic** (`PENT`), which cannot rub against any chord of the tune.
+- *Sliding tones* (bloops, twangs, a rising siren in the whirl) → pitched effects sit on scale notes (the launch is a harp
+  pluck on D4, bumps are wooden "toks" on a scale note, lower for bigger cakes); what must not have a pitch is noise (plops, whooshes).
+- *A long, loud hall and a feedback echo* smearing one chord into the next → hall 1.7 s at 38 %, one quiet echo, and a
+  0.4 s crossfade between chords instead of 1 s.
+- *The flute an octave down, beating against the pad* → the flute sings at the melody's pitch; registers stay apart:
+  bass (36–47) – pad and harp (45–71) – melody (67–81, 79–93 on the bright round).
+- Sparkles now use the bar's own chord notes.
+
+Result on the meter: 15 % of frames (music alone), 25 % with a scripted minute of effects on top – the rest is reverb tails
+across chord changes, leading tones resolving, and noise sweeps, which the meter cannot tell from clashes. The score
+itself is clean (every melody note checked against its bar's chord; the only deliberate tension is the F# over C in the
+D7sus bar, the classic dominant resolving home).
+
+- **Music – "Tilly's Lullaby":** a composed 16-bar tune in G major, 6/8 at a rocking 55 bpm (dotted quarter). Chords:
+  G · G6 · Em · Em · C · Cadd9 · Dsus4 · D · G · Bm · C · Am7 · G/B · C · D7sus · G. Four rounds that rotate: celesta
+  over the rolling harp; the **flute** singing the tune with the harp thinned out; the celesta an **octave up** over a
+  brighter harp; a **quiet round** of harp and pad only. A harp flourish up the pentatonic at the end of each phrase.
+  Instruments: **celesta** (sine with harmonic partials that fade quickly, the tiny click of the pin), **harp** (a
+  triangle whose brightness closes right after the pluck), **pad** (two triangles 3 cents apart under a slowly breathing
+  low-pass, spread left to right, plain triads), **bass** (sine with a touch of its octave), **flute** (sine with a whisper
+  of its octave, a breath and a vibrato that sets in late). `node tools/render-music.js out.wav 110` renders the tune;
+  `--sfx` adds a scripted minute of play on top.
+- **Pulling the sling:** an airy shimmer of fairy dust swells and brightens with the tension; the four detents play
+  G B D G on the celesta; full power adds a high sparkle. No creaking rubber.
+- **Collisions:** wooden "toks" on scale notes between cakes, a splashy plop on the rim.
+- **Merges:** a puff, a soft low note and a two-note chime (three for big cakes) that climbs the pentatonic with the combo.
+- **Fanfares:** G major arpeggios and pentatonic runs for discoveries, orders, stages, the whirl and Fairy Magic.
+- **Warnings:** a soft, questioning two-note call (B4 → G4) while a cake is in danger.
+
+Music and sound can be toggled separately in the pause menu. Mix (offline render): peak −12 dBFS, long-term RMS −29 dBFS
+(−26 with effects), no clipping; the master compressor (threshold −14 dB, ratio 3) only catches peaks.
 
 ## Tuning knobs
 - **`js/physics.js` → `CFG`:**
