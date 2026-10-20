@@ -254,6 +254,19 @@
       this.tone(196, 0.16, { type: 'triangle', vol: 0.12 });
       this.tone(185, 0.16, { type: 'triangle', vol: 0.1, delay: 0.17 });
     },
+    // the order is filled
+    orderDone() {
+      [0, 4, 7, 12].forEach((n, i) => this.bell(midi(72 + n), 0.7, 0.12, i * 0.07));
+      this.tone(midi(48), 0.5, { type: 'triangle', vol: 0.1, delay: 0.1 });
+    },
+    // the stage whirl: a rising swoosh, a shimmer on top, a soft settle at the end
+    whirl() {
+      this.noise(1.4, { freq: 300, sweep: 2600, q: 0.8, vol: 0.16, attack: 0.3 });
+      this.noise(1.8, { freq: 2200, sweep: 700, q: 0.7, vol: 0.12, attack: 0.5, delay: 1.3 });
+      this.tone(110, 1.6, { type: 'sine', slide: 2.2, vol: 0.08, attack: 0.4 });
+      [0, 2, 4, 7, 9, 12, 14, 16].forEach((n, i) => this.bell(midi(76 + n), 0.5, 0.05, 0.25 + i * 0.09));
+      this.noise(0.6, { freq: 500, sweep: 200, q: 1.0, vol: 0.09, delay: 2.9 });
+    },
     gameOver() {
       [12, 7, 4, 0, -5].forEach((n, i) => this.bell(midi(67 + n), 1.0, 0.14, i * 0.18));
     },

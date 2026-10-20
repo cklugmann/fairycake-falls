@@ -15,9 +15,9 @@
     <!-- ===== HUD ===== -->
     <div id="hud" class="hidden">
       <div id="scorePill" class="pill">
-        <div class="pill-level">Level <b id="lvl">1</b></div>
+        <div class="pill-level">Stage <b id="lvl">1</b></div>
         <div class="pill-score"><svg viewBox="0 0 24 24" class="star"><path d="M12 2.5l2.9 6 6.6.8-4.9 4.6 1.3 6.5L12 17.2l-5.9 3.2 1.3-6.5L2.5 9.3l6.6-.8z"/></svg><b id="score">0</b></div>
-        <div class="pill-bar"><i id="lvlbar"></i></div>
+        <div class="pill-order"><div class="pill-bar"><i id="lvlbar"></i></div><span class="pill-goal" id="goal">5 to go</span></div>
       </div>
       <div id="streak" class="streak"><svg viewBox="0 0 24 24" class="streak-ic"><path d="M12 2.5c1.2 3.2 4.8 5.2 4.8 9.6A4.8 4.8 0 0 1 7.2 12c0-1.6.7-2.9 1.6-3.9.2 1.5 1 2.5 2.1 2.9C10.4 7.9 11 5 12 2.5z" fill="#fff3a8" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><path d="M12 21.5a5.6 5.6 0 0 1-5.6-5.6c0-1 .2-1.9.7-2.7a5.4 5.4 0 0 0 9.8 0c.5.8.7 1.7.7 2.7a5.6 5.6 0 0 1-5.6 5.6z" fill="#ffd166" opacity=".9"/></svg><b id="streakX">x1.25</b><span id="streakN">Streak 2</span></div>
       <button id="pauseBtn" class="round-btn" aria-label="Pause">
@@ -115,22 +115,25 @@
         <h2><span class="leaf">&#10047;</span> How to play <span class="leaf">&#10047;</span></h2>
         <div class="step">
           <div class="num">1</div><canvas class="step-icon" data-icon="aim" width="88" height="88"></canvas>
-          <div class="step-text"><b>Pull back &amp; let go.</b> Like a slingshot: the cake flies the other way. Pull further for more power – or just tap where it should go.</div>
+          <div class="step-text"><b>Pull the cake back &amp; let go.</b> Like a slingshot: it flies the other way. The dotted preview shows its path through the water up to the first touch – what the hit sets off is yours to judge.</div>
         </div>
         <div class="step">
           <div class="num">2</div><canvas class="step-icon" data-icon="merge" width="88" height="88"></canvas>
           <div class="step-text"><b>Same cakes merge.</b> Two identical cakes that touch become a bigger one. A pink heart in the preview means: match!</div>
         </div>
         <div class="step">
-          <div class="num">3</div><canvas class="step-icon" data-icon="ring" width="88" height="88"></canvas>
-          <div class="step-text"><b>Keep the ring clear.</b> Cakes drift to the middle while the pond slowly turns. A cake outside the ring for 4 seconds makes the pond overflow.</div>
+          <div class="num">3</div><canvas class="step-icon" data-icon="water" width="88" height="88"></canvas>
+          <div class="step-text"><b>Read the water.</b> A current races round the edge and carries slow cakes with it; the calm middle draws them in and turns the pile. Fast flicks fly straight, slow ones curve – ride the current to reach the far side.</div>
+        </div>
+        <div class="step">
+          <div class="num">4</div><canvas class="step-icon" data-icon="ring" width="88" height="88"></canvas>
+          <div class="step-text"><b>Keep the ring clear.</b> A cake resting outside the ring for 4 seconds overflows the pond.</div>
         </div>
         <div class="tips">
-          <div><b>Goal:</b> score high – bigger cakes and combos score more.</div>
+          <div><b>Orders:</b> each stage asks for a number of merges. Fill it and the pond whirls: the pile is shuffled, your multiplier rises, a gift arrives.</div>
           <div><b>Hot streak:</b> merge with every flick to multiply your points.</div>
-          <div><b>Next:</b> tap it to swap your two cakes.</div>
-          <div><b>Magic Cake &amp; Wand:</b> earned on level-ups.</div>
-          <div><b>Fairy Bubbles:</b> hit them for gifts.</div>
+          <div><b>Next:</b> tap it to swap your two cakes (or press Space).</div>
+          <div><b>Magic Cake &amp; Wand:</b> gifts for finished orders. Fairy Bubbles hold more.</div>
         </div>
         <button id="replayTutBtn" class="link-btn">Show me the tour again</button>
         <button class="btn btn-play small close-btn" data-close="how">Got it!</button>
@@ -173,7 +176,7 @@
         <div class="over-stats">
           <div class="stat"><canvas id="overCake" width="80" height="80"></canvas><div><small>Biggest cake</small><b id="overCakeName"></b></div></div>
           <div class="stat-row">
-            <div><small>Level</small><b id="overLevel">1</b></div>
+            <div><small>Stage</small><b id="overLevel">1</b></div>
             <div><small>Merges</small><b id="overMerges">0</b></div>
             <div><small>Best combo</small><b id="overCombo">0</b></div>
           </div>

@@ -2,9 +2,12 @@
 
 Flick cute cakes from a little slingshot into a magical floating pond.
 Identical cakes merge into bigger ones – from a tiny **Macaron** all the way up
-to the **Royal Fairycake**. Keep the dotted ring clear, or the pond overflows!
+to the **Royal Fairycake**. Read the water: a current races round the edge and
+carries slow cakes with it, the calm pool inside the ring draws them in. Fill the
+castle's orders to make the pond whirl, and keep the cakes in the calm water, or
+the pond overflows!
 
-Your first game is a short guided tour that shows the gesture and the goal.
+Your first game is a short guided tour that shows the gestures and the goal.
 
 Prototype: pure HTML / CSS / JavaScript, no backend, no build step.
 
@@ -23,18 +26,26 @@ Mouse and touch work the same.
 
 | Action | Touch / mouse | Keyboard |
 | --- | --- | --- |
-| Flick a cake | Press anywhere, **pull back**, let go – like a slingshot. Pull further for more power | – |
-| Throw at a spot | Tap the spot on the water – the cake lands right there (or drag towards it) | – |
+| Flick a cake | Press the cake in the sling (or anywhere outside the water), **pull back**, let go – like a slingshot. Pull further to send it further | – |
 | Cancel a flick | Drag back to where you started (or right-click) | `Esc` |
 | Swap current / next cake | Tap **Next** | `Space` |
 | Magic Cake (joker) | Tap its button (appears once you earn one) | – |
 | Wand (remove a cake) | Tap its button, then a cake | – |
 | Pause | Pause button | `Esc` |
 
-The dotted preview shows the flick's path against the current pile. A **pink
-heart** means the flick will hit a matching cake. Merge with every flick to
-build a **hot streak** that multiplies your points. The ladder at the bottom shows
-the whole cake chain and how far you got this run.
+The dotted preview shows the flick's path – curved by the current – up to its
+first touch: a **pink heart** when that touch is a matching cake, a short arrow
+for the direction a hit cake is pushed in, and the ride round the pond for a
+flick into open water. What the hit sets off – chains, knock-ons, a cake shoved
+into the current – is yours to read. A hard flick flies straight and shoves the
+cluster; a soft one curves and lands gently. Merge with every flick to build a
+**hot streak** that multiplies your points.
+
+Every stage is an **order** of merges (shown in the pill at the top). Fill it and
+the pond **whirls**: the cluster is shuffled, your multiplier rises, a gift arrives,
+and every third stage the island drifts into a new world. The calm pool widens with
+every bigger cake you bake. The ladder at the bottom shows the whole cake chain and
+how far you got this run.
 
 To see the guided tour again: **How to play → Show me the tour again**.
 
@@ -53,7 +64,7 @@ js/audio.js         Web Audio sound effects + music-box lullaby
 js/ui.js            HUD, coach tips, cake ladder, menus, Cake Book
 js/main.js          bootstrap
 assets/             pre-painted background layers (WebP) + manifest.js
-tools/              asset generator (re-creates everything in assets/)
+tools/              asset generator (re-creates everything in assets/), bot.js balance harness
 DESIGN.md           game design: rules, numbers, art direction, next steps
 ```
 

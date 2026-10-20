@@ -55,8 +55,16 @@ button { font-family: inherit; cursor: pointer; border: 0; touch-action: manipul
 .pill-score { display: flex; align-items: center; gap: 5px; font-size: 22px; font-weight: 700; line-height: 1.05; }
 .pill-score .star { width: 20px; height: 20px; fill: #ffd34d; stroke: #d98b16; stroke-width: 1.4; }
 .pill-score.bump b { animation: bump 0.35s ease; display: inline-block; }
-.pill-bar { margin-top: 5px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.25); overflow: hidden; }
-.pill-bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, #ffd34d, #ff8fc4); transition: width 0.4s ease; }
+.pill-order { display: flex; align-items: center; gap: 7px; margin-top: 5px; }
+.pill-bar { flex: 1; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.25); overflow: hidden; }
+.pill-bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, #ffd34d, #ff8fc4); transition: width 0.35s ease; }
+.pill-goal { font-size: 12px; font-weight: 600; white-space: nowrap; opacity: 0.9; letter-spacing: 0.2px; }
+.pill.tick .pill-goal { animation: bump 0.35s ease; display: inline-block; }
+.pill.full .pill-bar i { background: linear-gradient(90deg, #a2eac6, #ffe27a, #ff8fc4); animation: shimmer 0.8s linear infinite; background-size: 200% 100%; }
+.pill.full .pill-goal { color: #fff3a8; }
+.pill.pulse { animation: pillPulse 0.9s ease 3; }
+@keyframes shimmer { from { background-position: 0 0; } to { background-position: 200% 0; } }
+@keyframes pillPulse { 0%, 100% { box-shadow: 0 4px 14px rgba(60, 40, 110, 0.25); } 50% { box-shadow: 0 0 0 6px rgba(255, 111, 168, 0.55), 0 4px 14px rgba(60, 40, 110, 0.25); } }
 
 .round-btn {
   position: absolute;
@@ -431,11 +439,11 @@ button { font-family: inherit; cursor: pointer; border: 0; touch-action: manipul
 .card h2 { margin: 2px 0 10px; font-size: 30px; color: var(--plum); font-weight: 700; }
 .card h2 .leaf { color: #7fc95e; font-size: 22px; }
 .card .sub { margin: -6px 0 12px; font-weight: 600; color: var(--pink); }
-.step { display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 4px; border-bottom: 2px dashed #f6cfe3; }
+.step { display: flex; align-items: center; gap: 10px; text-align: left; padding: 6px 4px; border-bottom: 2px dashed #f6cfe3; }
 .step:last-of-type { border-bottom: 0; }
 .step .num { flex: 0 0 30px; height: 30px; border-radius: 50%; background: #ffb46b; color: #fff; font-weight: 700; display: grid; place-items: center; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(200, 100, 50, 0.3); }
 .step-icon { flex: 0 0 64px; width: 64px; height: 64px; }
-.step-text { font-size: 15px; line-height: 1.32; color: #6a3f5c; }
+.step-text { font-size: 14.5px; line-height: 1.3; color: #6a3f5c; }
 .step-text b { color: var(--plum); }
 .tips { margin-top: 8px; background: rgba(255, 255, 255, 0.7); border-radius: 18px; padding: 8px 12px; text-align: left; font-size: 14px; line-height: 1.5; color: #6a3f5c; }
 .tips b { color: var(--pink-deep); }

@@ -1,10 +1,13 @@
 /* Fairycake Falls – game logic, input and rendering.
 
-   Controls (mouse and touch work the same):
-   - Pull back anywhere and let go: slingshot. The cake flies the opposite way,
-     pull length = power. This is the gesture the tutorial teaches.
-   - Tap a spot in the pond (or drag forward): the cake is thrown at that spot.
-   The cake always starts from the sling at the front of the pond. */
+   Controls (mouse and touch work the same, no mode guessing):
+   - Grab the cake in the sling (or anything outside the water), pull back, let go:
+     the cake flies the opposite way, pull length = travel distance.
+   - Tap or swipe the water: ripples, and the hand reminds you how to flick.
+   The water does the rest: a current races round the rim and carries slow cakes
+   round the pond, the calm middle draws them in and turns the pile lazily.
+   Stages: every stage is an order of N merges. When it is filled the whirlpool
+   spins up and reshuffles the pile, the multiplier rises and a gift arrives. */
 (function () {
   'use strict';
   const FC = window.FC;
@@ -18,14 +21,20 @@
   const AU = FC.Audio;
 
   const CONE = (80 * Math.PI) / 180; // widest flick, measured from straight ahead
-  const DEAD = 12;                   // px a drag needs before it counts
+  const DEAD = 9;                    // px a pull needs before it counts
   const FLY_TIME = 0.2;              // the next cake hops from the Next bubble into the sling
   const COACH_DONE = 3;              // stored tutorial progress when finished
   const HAND_CYCLE = 2.6;
+  const FOAM_N = 56;                 // petals / foam flecks that ride the current and make it visible
+  const STREAK_N = 7;                // long foam streaks that race round the rim band
+  // the stage whirl: tear (the water spins up and pushes everything out), spin (the cluster orbits the rim, mixed by
+  // shear and turbulence, twins find each other), drain (the current drags everything back to the middle, big cakes
+  // first), settle. Times in seconds, speeds in rad/s.
+  const WHIRL = { up: 0.55, hold: 1.9, down: 2.9, settle: 4.3, maxSettle: 5.8, omega: 3.4, shear: 0.8, outflow: -1.3, drain: 3.2, twin: 2.4, kick: 320 };
 
-  const levelScore = (n) => 50 * n * (n - 1); // score needed to reach level n
-  const levelFor = (score) => { let n = 1; while (levelScore(n + 1) <= score) n++; return n; };
-  const themeForLevel = (lv) => Math.floor((lv - 1) / 3) % Math.max(1, S.themeCount());
+  const stageGoal = (n) => (n <= 1 ? 5 : Math.min(24, 4 + 2 * n)); // merges an order asks for: 5, 8, 10, 12, ... up to 24
+  const ringFor = (maxTier) => Math.min(CFG.DANGER, CFG.RING_MIN + CFG.RING_STEP * Math.max(0, maxTier - 3)); // the calm pool widens with every new cake
+  const themeForStage = (n) => Math.floor((n - 1) / 3) % Math.max(1, S.themeCount());
   const easeInOut = (k) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
   const WTMP = { x: 0, y: 0 };
 
@@ -34,9 +43,12 @@
     state: 'loading', // loading | title | playing | paused | over
     t: 0, last: 0,
     world: null,
-    score: 0, best: 0, level: 1, combo: 0, bestCombo: 0, lastMergeT: -9, maxTier: 1, merges: 0, shots: 0,
+    score: 0, best: 0, combo: 0, bestCombo: 0, lastMergeT: -9, maxTier: 1, merges: 0, shots: 0,
+    stage: 1, stageGoal: 5, stageMerges: 0, stageDone: false, whirl: null, ring: 880,
     queue: [], cool: 0, shotSeq: 0,
-    aim: { active: false, pid: null, sx: 0, sy: 0, cx: 0, cy: 0, mode: null, pressInPond: false, L: null, dir: null, power: 0, valid: false, speed: 0, pred: null, lastTick: 0, offX: 0, offY: 0, target: null },
+    aim: { active: false, pid: null, sx: 0, sy: 0, cx: 0, cy: 0, L: null, dir: null, power: 0, valid: false, speed: 0, pred: null, lastTick: 0, offX: 0, offY: 0, gripX: 0, gripY: 0, detent: 0 },
+    water: { active: false, pid: null, lx: 0, ly: 0, rippleT: 0 },
+    foam: [],
     launcher: { pop: 1 },
     sling: { w: 0, snap: 0 },
     fly: null,
@@ -47,7 +59,7 @@
     shake: 0, flash: 0, flashCol: '#ffffff',
     overT: 0, overPops: 0,
     discovered: null,
-    coach: null, idle: 0, handT: -1, hint: null, ringPulse: 0,
+    coach: null, idle: 0, handT: -1, hint: null, ringPulse: 0, rideTip: false, foamPulse: 0,
     hitstop: 0, streak: 0, pending: [], grab: 0,
     demo: { phase: 'wait', t: 0, wait: 0.8 },
     whirlPhase: 0,
@@ -98,42 +110,53 @@
       FX.clear();
       this.bubble = null;
       this.wandMode = false;
-      this.aim.active = false;
+      this.whirl = null;
+      this.world.inflowK = 1; this.world.free = false; this.world.shear = 0; this.world.twinK = 1; this.world.twinAlways = false;
+      this.cancelAim();
       this.coach = null;
       this.handT = -1;
       this.hint = null;
       this.fly = null;
       S.setTheme(0, true);
       this.queue = [1, 2];
+      this.ring = CFG.DANGER;
       this.setupStart(false);
+      this.setWater(true);
+      this.buildFoam();
       this.demo = { phase: 'wait', t: 0, wait: 0.9 };
       this.setCursor();
     },
 
     newGame() {
       FX.clear();
-      this.score = 0; this.level = 1; this.combo = 0; this.bestCombo = 0; this.lastMergeT = -9;
+      this.score = 0; this.combo = 0; this.bestCombo = 0; this.lastMergeT = -9;
+      this.stage = 1; this.stageGoal = stageGoal(1); this.stageMerges = 0; this.stageDone = false; this.whirl = null;
+      this.ring = ringFor(3);
+      this.world.inflowK = 1; this.world.free = false; this.world.shear = 0; this.world.twinK = 1; this.world.twinAlways = false;
       this.maxTier = 3; this.merges = 0; this.shots = 0; this.shotSeq = 0;
       this.jokers = 0; this.wands = 0; this.wandMode = false;
       this.bubble = null; this.nextBubbleAt = 14 + FC.randInt(0, 6);
       this.danger = 0; this.dangerBody = null; this.warnT = 0; this.dangerHinted = false;
       this.cool = 0; this.launcher.pop = 0; this.fly = null;
       this.overT = 0;
-      this.aim.active = false;
-      this.idle = 0; this.handT = -1; this.hint = null; this.ringPulse = 0;
+      this.cancelAim();
+      this.idle = 0; this.handT = -1; this.hint = null; this.ringPulse = 0; this.rideTip = false;
       this.hitstop = 0; this.streak = 0; this.pending = [];
       this.state = 'playing';
       if (S.theme !== 0) S.setTheme(0, false);
       const tutorial = FC.store.get('coach', 0) < COACH_DONE;
       this.setupStart(tutorial);
-      this.queue = tutorial ? [1, 2, 1] : [this.randTier(), this.randTier()];
+      this.queue = tutorial ? [1, 2, 1] : [1, this.randTier()]; // the first cake always has a match on the outside of the start pile
       FC.UI.onNewGame();
       this.coach = tutorial ? { step: 'aim', t: 0, shown: '' } : null;
-      if (this.coach) this.coachSay('aim', 'Pull back & let go!', 'Flick the cake into the pond');
+      if (this.coach) this.coachSay('aim', 'Pull the cake back & let go!', 'Like a slingshot');
+      this.setWater(true);
+      this.buildFoam();
       this.setCursor();
     },
 
     // A few cakes are already floating when a run starts, so the first flick has a target.
+    // The layout is a packed clump with identical cakes on opposite sides, so nothing merges by itself.
     setupStart(tutorial) {
       const W = this.world;
       const place = (list) => {
@@ -146,13 +169,13 @@
         });
       };
       const settle = () => {
-        const onI = W.onImpact, onR = W.onRim, sw = W.swirl;
+        const onI = W.onImpact, onR = W.onRim, om = W.omegaCore;
         W.onImpact = W.onRim = null;
         W.canMerge = () => false;
-        W.swirl = 0;
+        W.omegaCore = 0;
         for (let i = 0; i < 100; i++) W.step(1 / 60);
         delete W.canMerge;
-        W.onImpact = onI; W.onRim = onR; W.swirl = sw;
+        W.onImpact = onI; W.onRim = onR; W.omegaCore = om;
         for (const b of W.bodies) { b.vx = 0; b.vy = 0; }
       };
       // identical cakes must not start next to each other (they would merge by themselves)
@@ -173,26 +196,30 @@
         settle();
         return;
       }
-      for (let tries = 0; tries < 14; tries++) {
-        const tiers = [1, 1, 2, 2, 3].sort(() => Math.random() - 0.5);
-        const list = [];
-        for (const t of tiers) {
-          for (let k = 0; k < 40; k++) {
-            const a = Math.random() * TAU, rr = 70 + Math.random() * 290;
-            const x = Math.cos(a) * rr, y = Math.sin(a) * rr * 0.85;
-            if (list.every(([t2, x2, y2]) => Math.hypot(x - x2, y - y2) > TIERS[t].r + TIERS[t2].r + 30)) { list.push([t, x, y]); break; }
-          }
+      // one cake in the middle, four around it in a cross: twins sit opposite each other
+      for (let tries = 0; tries < 20; tries++) {
+        const mid = FC.pick([2, 3, 3]);
+        const other = mid === 3 ? 2 : 3;
+        const ring = [1, other, 1, other];
+        const rot = Math.random() * TAU;
+        const list = [[mid, 0, 0]];
+        for (let i = 0; i < 4; i++) {
+          const a = rot + (i / 4) * TAU;
+          const d = TIERS[mid].r + TIERS[ring[i]].r + 6;
+          list.push([ring[i], Math.cos(a) * d, Math.sin(a) * d]);
         }
         place(list);
         settle();
-        if (apart()) break;
+        if (apart()) return;
       }
+      place([[3, 0, 0], [1, 0, 190], [2, -205, -60], [1, 0, -190], [2, 205, -60]]);
+      settle();
     },
 
-    // new cakes: Macaron, Cherry Bite, Cupcake – and Lemon Tart once a Peach Cake exists
+    // new cakes: Macaron, Cherry Bite, Cupcake and (rarely) Lemon Tart – the Blossom Cake joins once a Blueberry Cake exists
     randTier() {
-      const maxT = FC.clamp(this.maxTier - 3, 3, 4);
-      const w = [36, 30, 22, 12];
+      const maxT = FC.clamp(this.maxTier - 4, 4, 5);
+      const w = [32, 30, 24, 14, 8];
       let sum = 0;
       for (let i = 0; i < maxT; i++) sum += w[i];
       let x = Math.random() * sum;
@@ -208,7 +235,7 @@
       c.addEventListener('pointerdown', (e) => this.onDown(e));
       c.addEventListener('pointermove', (e) => this.onMove(e));
       c.addEventListener('pointerup', (e) => this.onUp(e));
-      c.addEventListener('pointercancel', () => this.cancelAim());
+      c.addEventListener('pointercancel', (e) => this.onCancel(e));
       c.addEventListener('contextmenu', (e) => e.preventDefault());
       window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
@@ -228,62 +255,94 @@
       if (this.state !== 'playing') return;
       if (e.button === 2) { this.cancelAim(); return; }
       if (this.wandMode) { this.wandTap(e.clientX, e.clientY); return; }
-      if (this.aim.active || this.queue[0] == null) return;
+      if (this.aim.active || this.water.active || this.whirl || this.stageDone) return;
+      if (this.queue[0] == null) return;
+      this.idle = 0;
+      this.handT = -1;
+      try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      if (this.isSlingPress(e.clientX, e.clientY)) this.beginAim(e);
+      else this.touchWater(e);
+      this.setCursor();
+    },
+
+    // where you press decides what you hold: the cake (and everything outside the water)
+    // is the sling; a finger on the open water only makes ripples
+    isSlingPress(x, y) {
+      if (!this.inPond(x, y)) return true;
+      const g = this.slingGround();
+      const rr = TIERS[this.queue[0]].r * S.s;
+      const reach = Math.max(rr * 2.4, 46);
+      return Math.hypot(x - g.x, y - (g.y - rr * 0.45)) < reach;
+    },
+
+    beginAim(e) {
       this.fly = null; // snap the next cake into the sling
       const a = this.aim;
       a.active = true;
       a.pid = e.pointerId;
       a.sx = a.cx = e.clientX;
       a.sy = a.cy = e.clientY;
-      a.mode = null;
       a.valid = false;
       a.power = 0;
       a.lastTick = 0;
       a.pred = null;
-      a.target = null;
-      const g = this.slingGround();
-      const rr = TIERS[this.queue[0]].r * S.s;
-      // pressed on open water (not on the cake): the player probably points at a target
-      a.pressInPond = this.inPond(e.clientX, e.clientY) && e.clientY < g.y - rr * 2.2;
-      try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-      this.idle = 0;
-      this.handT = -1;
-      this.grab = 1;
       a.detent = 0;
+      this.grab = 1;
       AU.grab();
       this.computeAim();
-      this.setCursor();
+    },
+
+    // a finger on the water: ripples that follow it (and a tap shows the hand)
+    touchWater(e) {
+      const w = this.water;
+      w.active = true;
+      w.pid = e.pointerId;
+      w.lx = e.clientX; w.ly = e.clientY;
+      w.moved = 0; w.t = 0; w.rippleT = 0;
+      const p = S.s2w(e.clientX, e.clientY);
+      FX.ripple(p.x, p.y, 40, 0.5, 300);
+      AU.plip(2);
     },
 
     onMove(e) {
-      const a = this.aim;
-      if (!a.active || e.pointerId !== a.pid) return;
-      a.cx = e.clientX;
-      a.cy = e.clientY;
-      if (!a.mode) {
-        const dx = a.cx - a.sx, dy = a.cy - a.sy;
-        if (dx * dx + dy * dy > DEAD * DEAD) {
-          // the first real movement decides: pulling back = slingshot, pushing forward = point
-          if (a.pressInPond) a.mode = dy > Math.abs(dx) * 0.8 ? 'sling' : 'point';
-          else a.mode = dy < -Math.abs(dx) * 0.8 ? 'point' : 'sling';
+      const a = this.aim, w = this.water;
+      if (a.active && e.pointerId === a.pid) {
+        a.cx = e.clientX;
+        a.cy = e.clientY;
+      } else if (w.active && e.pointerId === w.pid) {
+        w.moved += Math.hypot(e.clientX - w.lx, e.clientY - w.ly);
+        w.lx = e.clientX; w.ly = e.clientY;
+        if (w.moved > 10 && this.inPond(e.clientX, e.clientY) && this.t - w.rippleT > 0.07) {
+          w.rippleT = this.t;
+          const p = S.s2w(e.clientX, e.clientY);
+          FX.ripple(p.x, p.y, 26, 0.3, 260);
         }
       }
     },
 
     onUp(e) {
-      const a = this.aim;
-      if (!a.active || e.pointerId !== a.pid) return;
-      a.cx = e.clientX;
-      a.cy = e.clientY;
-      if (!a.mode && a.pressInPond) a.mode = 'point'; // a tap on the water: throw it there
-      this.computeAim();
-      const ok = a.valid && (a.mode === 'point' || a.power > 0.02);
-      if (ok && this.cool <= 0 && this.state === 'playing') this.launch();
-      else if (!a.mode) this.idle = 20; // tapped the cake: show the hand right away
-      AU.stretch(0);
-      a.active = false;
-      a.pred = null;
-      this.setCursor();
+      const a = this.aim, w = this.water;
+      if (a.active && e.pointerId === a.pid) {
+        a.cx = e.clientX;
+        a.cy = e.clientY;
+        this.computeAim();
+        const ok = a.valid && a.power > 0.03;
+        if (ok && this.cool <= 0 && this.state === 'playing') this.launch();
+        else if (!a.valid) this.idle = 20; // tapped the cake: show the hand right away
+        AU.stretch(0);
+        a.active = false;
+        a.pred = null;
+        this.setCursor();
+      } else if (w.active && e.pointerId === w.pid) {
+        if (w.moved < 12) this.idle = 20; // a tap on the water: the hand shows what to do
+        w.active = false;
+        this.setCursor();
+      }
+    },
+
+    onCancel(e) {
+      if (this.aim.active && (!e || e.pointerId === this.aim.pid)) this.cancelAim();
+      if (this.water.active && (!e || e.pointerId === this.water.pid)) this.water.active = false;
     },
 
     cancelAim() {
@@ -320,7 +379,7 @@
     // full power must be reachable when pulling straight back from the cake, even on short screens
     maxPull() {
       const room = S.H - this.slingBase().y - 28;
-      return FC.clamp(Math.min(S.pr * 0.9, room), 100, 250);
+      return FC.clamp(Math.min(S.pr * 0.95, room), 110, 260);
     },
 
     computeAim() {
@@ -328,39 +387,21 @@
       const tier = this.queue[0];
       a.valid = false;
       a.offX = a.offY = 0;
-      a.target = null;
       if (tier == null) return;
       const r = TIERS[tier].r;
       const L = this.anchorW(tier);
       const dx = a.cx - a.sx, dy = a.cy - a.sy;
       const len = Math.sqrt(dx * dx + dy * dy);
-      const mode = a.mode || (a.pressInPond ? 'point' : null);
-      let wx, wy, p, speed;
-      if (mode === 'sling') {
-        if (len < DEAD) { a.pred = null; a.power = 0; return; }
-        wx = -dx; wy = -dy / S.K;
-        const maxPull = this.maxPull();
-        p = FC.clamp((len - DEAD) / (maxPull - DEAD), 0, 1);
-        speed = FC.Physics.speedForPower(p); // pull length = travel distance
-        const vis = Math.min(len, maxPull) * 0.5;
-        a.offX = (dx / len) * vis;
-        a.offY = (dy / len) * vis;
-        a.gripX = (dx / len) * Math.min(len, maxPull);
-        a.gripY = (dy / len) * Math.min(len, maxPull);
-      } else if (mode === 'point') {
-        const T = S.s2w(a.cx, a.cy);
-        wx = T.x - L.x; wy = T.y - L.y;
-        const d = Math.sqrt(wx * wx + wy * wy);
-        if (d < r * 1.2) { a.pred = null; a.power = 0; return; }
-        const dd = FC.clamp(d, CFG.D_MIN, CFG.D_MAX);
-        speed = FC.Physics.speedForDistance(dd); // lands right on the spot you tapped
-        p = (dd - CFG.D_MIN) / (CFG.D_MAX - CFG.D_MIN);
-        a.target = T;
-      } else {
-        a.pred = null;
-        a.power = 0;
-        return;
-      }
+      if (len < DEAD) { a.pred = null; a.power = 0; AU.stretch(0); return; }
+      let wx = -dx, wy = -dy / S.K;
+      const maxPull = this.maxPull();
+      const p = FC.clamp((len - DEAD) / (maxPull - DEAD), 0, 1);
+      const speed = FC.Physics.speedForPower(p); // pull length = travel distance
+      const vis = Math.min(len, maxPull) * 0.5;
+      a.offX = (dx / len) * vis;
+      a.offY = (dy / len) * vis;
+      a.gripX = (dx / len) * Math.min(len, maxPull);
+      a.gripY = (dy / len) * Math.min(len, maxPull);
       const wl = Math.sqrt(wx * wx + wy * wy) || 1;
       wx /= wl; wy /= wl;
       // flicks always go into the pond
@@ -371,6 +412,7 @@
       a.power = p;
       a.speed = speed;
       a.valid = true;
+      // the preview ends at the first contact: what the hit does to the cluster is the player's call
       a.pred = this.world.predict(L.x, L.y, wx * speed, wy * speed, r, tier, { maxT: 3.4, maxLen: 3000, spacing: 42 });
       // detents every 25 % (sound + a tiny buzz on phones that support it)
       const step = Math.floor(p * 4 + 0.001);
@@ -382,7 +424,7 @@
         }
         a.lastTick = step;
       }
-      AU.stretch(mode === 'sling' ? p : p * 0.4);
+      AU.stretch(p);
     },
 
     predMatch(pred, tier) {
@@ -528,28 +570,19 @@
 
     onMerge(a, b) {
       const t = a.tier;
-      a.dead = b.dead = true;
-      const x = (a.x * a.m + b.x * b.m) / (a.m + b.m);
-      const y = (a.y * a.m + b.y * b.m) / (a.m + b.m);
       const live = this.state === 'playing';
       const combo = live ? this.bumpCombo() : 1;
       const mult = 1 + 0.5 * (combo - 1);
       if (t >= MAX_T) {
-        if (live) this.royalBlast(x, y, combo);
+        a.dead = b.dead = true;
+        if (live) this.royalBlast((a.x + b.x) / 2, (a.y + b.y) / 2, combo);
         return;
       }
       const nt = t + 1;
-      const nb = new Body(nt, Math.max(a.r, b.r), x, y);
-      nb.rT = TIERS[nt].r;
-      nb.setMass(nb.rT);
-      nb.vx = (a.vx * a.m + b.vx * b.m) / (a.m + b.m) * 0.6;
-      nb.vy = (a.vy * a.m + b.vy * b.m) / (a.m + b.m) * 0.6;
-      nb.age = Math.max(0.8, Math.min(a.age, b.age));
+      const nb = this.world.mergeBodies(a, b, nt, TIERS[nt].r, live);
       nb.pop = 0;
       nb.expr = 'happy';
       nb.exprT = 1.1;
-      nb.shotId = Math.max(a.shotId, b.shotId);
-      this.world.add(nb);
       if (!live) {
         // title-screen demo: just the pretty part
         this.mergeFX(nb, nt, 1, 0, null, true);
@@ -557,24 +590,16 @@
       }
       this.merges++;
       this.creditShot(nb.shotId);
-      const pts = Math.round(TIERS[nt].score * mult * this.streakMult());
+      const pts = Math.round(TIERS[nt].score * mult * this.streakMult() * this.stageMult());
       this.addScore(pts);
       this.mergeFX(nb, nt, combo, pts);
       AU.merge(nt, combo);
-      // a tiny freeze sells the pop; neighbours get nudged by the burst
+      // a tiny freeze sells the pop
       this.hitstop = Math.min(0.13, this.hitstop + 0.045 + nt * 0.004);
-      for (const o of this.world.bodies) {
-        if (o.dead || o === nb || o.sensor || o.anchored) continue;
-        const dx = o.x - x, dy = o.y - y, d = Math.hypot(dx, dy) || 1;
-        const R = nb.rT * 2.3 + o.r;
-        if (d >= R) continue;
-        const k = 300 * (1 - d / R) * Math.min(1.5, nb.m / (o.m + nb.m) * 2);
-        o.vx += (dx / d) * k; o.vy += (dy / d) * k;
-        o.sqv += 2.2;
-      }
       if (navigator.vibrate) try { navigator.vibrate(nt >= 6 ? 22 : 10); } catch (e) { /* ignore */ }
       this.reach(nt);
       this.cheer(nt >= 5 || combo >= 3 ? 1.2 : 0.6);
+      this.bakeProgress();
       const c = this.coach;
       if (c && (c.step === 'aim' || c.step === 'fly' || c.step === 'retry')) {
         c.step = 'merged'; c.t = 0;
@@ -583,7 +608,7 @@
       // cakes nearby smile
       for (const o of this.world.bodies) {
         if (o.dead || o === nb || o.sensor) continue;
-        const d = Math.hypot(o.x - x, o.y - y);
+        const d = Math.hypot(o.x - nb.x, o.y - nb.y);
         if (d < nb.rT * 2.6 && !o.expr) { o.expr = 'happy'; o.exprT = 0.6 + Math.random() * 0.4; }
       }
     },
@@ -613,12 +638,13 @@
       this.world.add(nb);
       this.merges++;
       this.creditShot(j.shotId);
-      const pts = Math.round(TIERS[nt].score * mult * this.streakMult());
+      const pts = Math.round(TIERS[nt].score * mult * this.streakMult() * this.stageMult());
       this.addScore(pts);
       this.mergeFX(nb, nt, combo, pts, 'Magic!');
       this.hitstop = Math.min(0.13, this.hitstop + 0.06);
       this.reach(nt);
       this.cheer(1);
+      this.bakeProgress();
     },
 
     onBubble(s, b) {
@@ -642,6 +668,10 @@
     // hot streak: consecutive flicks that make at least one merge
     streakMult() {
       return this.streak >= 2 ? Math.min(3, 1 + 0.25 * (this.streak - 1)) : 1;
+    },
+    // every finished order raises the stage multiplier
+    stageMult() {
+      return Math.min(2.5, 1 + 0.15 * (this.stage - 1));
     },
     creditShot(id) {
       const p = this.pending.find((q) => q.id === id);
@@ -692,7 +722,7 @@
     },
 
     royalBlast(x, y, combo) {
-      const pts = Math.round(500 * (1 + 0.5 * (combo - 1)));
+      const pts = Math.round(500 * (1 + 0.5 * (combo - 1)) * this.stageMult());
       this.addScore(pts);
       this.merges++;
       FX.burst(x, y, { n: 60, colors: TIERS[MAX_T].particle.concat(['#ff9fd0', '#9ec5ff', '#a7ebc8']), speed: [400, 1600], size: [12, 30], kinds: ['star', 'heart', 'sprinkle', 'dot'], life: [0.8, 1.8], gravity: 300, up: 300 });
@@ -709,6 +739,7 @@
       AU.royal();
       FC.UI.banner('Fairy Magic!', 'Two Royal Fairycakes vanished in sparkles');
       this.cheer(2);
+      this.bakeProgress();
     },
 
     // a new tier was created in this run
@@ -716,6 +747,11 @@
       if (nt > this.maxTier) {
         this.maxTier = nt;
         FC.UI.setLadder(this.maxTier, nt);
+        // a bigger cake needs more room: the calm pool widens
+        if (ringFor(nt) > this.ring + 1 && this.state === 'playing') {
+          this.ringPulse = Math.max(this.ringPulse, 2.2);
+          FX.popup(0, -this.ring * 0.55, 'The pool widens!', '#7bdbe8', 30, { life: 1.6 });
+        }
       }
       this.discover(nt);
     },
@@ -738,30 +774,121 @@
     addScore(pts) {
       this.score += pts;
       FC.UI.setScore(this.score);
-      const lv = levelFor(this.score);
-      if (lv > this.level) {
-        for (let n = this.level + 1; n <= lv; n++) this.levelUp(n);
-        this.level = lv;
-      }
-      FC.UI.setLevel(this.level, (this.score - levelScore(this.level)) / (levelScore(this.level + 1) - levelScore(this.level)));
     },
 
-    levelUp(n) {
-      AU.levelUp();
-      let gift, kind;
-      if (n % 2 === 0) { this.jokers++; gift = '+1 Magic Cake'; kind = 'joker'; } else { this.wands++; gift = '+1 Wand'; kind = 'wand'; }
-      FC.UI.updatePowers(true);
-      const nextTheme = themeForLevel(n);
-      if (nextTheme !== S.theme) {
-        S.load(nextTheme).then(() => {
-          S.setTheme(nextTheme, false);
-          FC.UI.banner('Welcome to ' + S.themeName(nextTheme) + '!', 'Level ' + n + ' · ' + gift);
-        });
-      } else FC.UI.banner('Level ' + n + '!', gift);
-      const upcoming = themeForLevel(n + 1);
-      if (upcoming !== S.theme) S.load(upcoming);
-      this.powerIntro(kind);
-      this.cheer(1.2);
+    // ------------------------------------------------------------
+    // stages: every order is a number of merges; filling it starts the whirl
+    // ------------------------------------------------------------
+    bakeProgress() {
+      this.stageMerges++;
+      FC.UI.setStage(this.stage, this.stageMerges, this.stageGoal);
+      if (this.stageMerges >= this.stageGoal && !this.stageDone && !this.whirl) {
+        this.stageDone = true;
+        this.stageDoneT = 0;
+        AU.orderDone();
+        FC.UI.banner('Order complete!', 'Hold on – the pond is about to whirl');
+        this.cheer(2.5);
+      }
+    },
+
+    // the whirl waits for the chain reaction to finish, then spins the pond up
+    updateStageDone(dt) {
+      if (!this.stageDone || this.whirl) return;
+      this.stageDoneT += dt;
+      let busy = this.pending.length > 0;
+      for (const b of this.world.bodies) if (!b.dead && !b.sensor && b.speed() > 260) { busy = true; break; }
+      if (busy && this.stageDoneT < 2.5) return;
+      this.startWhirl();
+    },
+
+    startWhirl() {
+      this.stageDone = false;
+      this.cancelAim();
+      this.wandMode = false;
+      FC.UI.updatePowers();
+      this.stage++;
+      this.stageMerges = 0;
+      this.stageGoal = stageGoal(this.stage);
+      this.whirl = { t: 0, omega: 0, merges: 0, shown: false, kicked: false };
+      this.pending = [];
+      this.danger = 0; this.dangerBody = null;
+      for (const b of this.world.bodies) { b.danger = 0; if (!b.sensor) { b.expr = 'wee'; b.exprT = 2.4; } }
+      this.cheer(4.5);
+      this.shake = Math.max(this.shake, 3);
+      AU.whirl();
+      FC.UI.setStage(this.stage, 0, this.stageGoal);
+      FC.UI.coachHide();
+    },
+
+    updateWhirl(dt) {
+      const w = this.whirl;
+      if (!w) return;
+      w.t += dt;
+      const T = WHIRL, W = this.world;
+      let om, k;
+      if (w.t < T.up) om = T.omega * easeInOut(w.t / T.up);
+      else if (w.t < T.hold) om = T.omega;
+      else if (w.t < T.down) om = T.omega * (1 - easeInOut((w.t - T.hold) / (T.down - T.hold)));
+      else om = 0;
+      w.omega = om;
+      // tear & spin: nothing holds together, the rim turns faster than the middle, the water pushes outwards
+      const spinning = w.t < T.hold + 0.3;
+      W.free = spinning;
+      W.shear = spinning ? T.shear * om : 0;
+      if (w.t < T.up) W.inflowK = FC.lerp(0.4, T.outflow, w.t / T.up);
+      else if (w.t < T.hold) W.inflowK = T.outflow;
+      else if (w.t < T.down) { k = (w.t - T.hold) / (T.down - T.hold); W.inflowK = FC.lerp(T.outflow, T.drain, easeInOut(k)); }
+      else if (w.t < T.settle) { k = (w.t - T.down) / (T.settle - T.down); W.inflowK = FC.lerp(T.drain, 1.2, k); }
+      else W.inflowK = 1;
+      // twins find each other while everything is in motion
+      W.twinAlways = w.t < T.settle;
+      W.twinK = w.t < T.down ? T.twin : w.t < T.settle ? FC.lerp(T.twin, 1, (w.t - T.down) / (T.settle - T.down)) : 1;
+      // turbulence: one random kick for everybody once the water has taken hold
+      if (!w.kicked && w.t > 0.35) {
+        w.kicked = true;
+        for (const b of W.bodies) {
+          if (b.dead || b.sensor || b.anchored) continue;
+          const a = Math.random() * TAU, sp = T.kick * (0.5 + Math.random());
+          b.vx += Math.cos(a) * sp; b.vy += Math.sin(a) * sp;
+          b.touch = false;
+        }
+      }
+      for (const b of W.bodies) { b.danger = 0; b.age = Math.min(b.age, 0.4); }
+      if (w.t > 0.2 && w.t < T.down && Math.random() < dt * 30) {
+        const a = Math.random() * TAU, rr = 300 + Math.random() * 650;
+        FX.burst(Math.cos(a) * rr, Math.sin(a) * rr, { n: 2, colors: ['#ffffff', '#d6f6ff', '#fff3a8'], speed: [60, 260], size: [6, 12], kinds: ['star', 'drop'], life: [0.4, 0.8], gravity: -40 });
+      }
+      if (!w.shown && w.t >= T.down) {
+        w.shown = true;
+        const n = this.stage;
+        let gift, kind;
+        if (n % 2 === 0) { this.jokers++; gift = '+1 Magic Cake'; kind = 'joker'; } else { this.wands++; gift = '+1 Wand'; kind = 'wand'; }
+        FC.UI.updatePowers(true);
+        const nextTheme = themeForStage(n);
+        if (nextTheme !== S.theme) {
+          S.load(nextTheme).then(() => {
+            S.setTheme(nextTheme, false);
+            FC.UI.banner('Welcome to ' + S.themeName(nextTheme) + '!', 'Stage ' + n + ' · ' + gift);
+          });
+        } else FC.UI.banner('Stage ' + n + '!', 'New order: ' + this.stageGoal + ' merges · ' + gift);
+        const upcoming = themeForStage(n + 1);
+        if (upcoming !== S.theme) S.load(upcoming);
+        AU.levelUp();
+        this.powerIntro(kind);
+      }
+      if (w.t >= T.settle) {
+        // the whirl is over once the cluster has gathered inside the ring again (or after a last grace)
+        let calm = true;
+        for (const b of W.bodies) {
+          if (b.dead || b.sensor) continue;
+          if (b.speed() > 120 || Math.hypot(b.x, b.y) + b.r > this.ring) { calm = false; break; }
+        }
+        if (calm || w.t >= T.maxSettle) {
+          this.whirl = null;
+          W.inflowK = 1; W.free = false; W.shear = 0; W.twinK = 1; W.twinAlways = false;
+          for (const b of W.bodies) b.age = -1.4; // a long grace: the ring only counts again after 2.5 s
+        }
+      }
     },
 
     maybeBubble() {
@@ -801,21 +928,30 @@
     nearRing() {
       for (const b of this.world.bodies) {
         if (b.dead || b.sensor || b.age < 1.1) continue;
-        if (Math.hypot(b.x, b.y) + b.r > CFG.DANGER - 50 && b.speed() < 400) return true;
+        if (Math.hypot(b.x, b.y) + b.r > this.ring - 50 && b.speed() < 400) return true;
       }
       return false;
     },
 
     updateCoach(dt) {
       const a = this.aim;
-      if (!a.active && !this.wandMode) this.idle += dt;
+      if (!a.active && !this.water.active && !this.wandMode) this.idle += dt;
       const c = this.coach;
       // the hand shows the gesture: always during the first steps, later only when the player hesitates
       let hand;
       if (c && (c.step === 'aim' || c.step === 'retry')) hand = !a.active && this.idle > 0.35;
-      else hand = !a.active && !this.wandMode && ((this.shots === 0 && this.idle > 2.5) || this.idle > 14);
+      else hand = !a.active && !this.water.active && !this.wandMode && !this.whirl && ((this.shots === 0 && this.idle > 2.5) || this.idle > 14);
       if (hand) this.handT = this.handT < 0 ? 0 : this.handT + dt;
       else this.handT = -1;
+      // the first time a flick is seen riding the current round to the pile: say so (once per game)
+      if (!this.rideTip && a.active && a.valid && a.pred && a.pred.hit && a.pred.hit.drift && a.pred.land) {
+        const land = a.pred.land, h = a.pred.hit;
+        const turned = Math.abs(FC.angDiff(Math.atan2(land.y, land.x), Math.atan2(h.y, h.x)));
+        if (turned > 0.6 && (!c || c.step === 'wait' || c.step === 'done')) {
+          this.rideTip = true;
+          if (!c) FC.UI.coach('Riding the current {heart}', 'The water carries it round to the pile', { time: 2600 });
+        }
+      }
       if (!c) return;
       c.t += dt;
       switch (c.step) {
@@ -825,7 +961,7 @@
             if (this.predMatch(a.pred, this.queue[0])) this.coachSay('match', 'That’s a match! {heart}', 'Let go to merge them');
             else this.coachSay('aiming', 'Aim at the same cake', 'A {heart} means: match!');
           } else if (!a.active) {
-            if (c.step === 'aim') this.coachSay('aim', 'Pull back & let go!', 'Flick the cake into the pond');
+            if (c.step === 'aim') this.coachSay('aim', 'Pull the cake back & let go!', 'Like a slingshot');
             else this.coachSay('retry', 'So close!', 'Hit a cake that looks the same');
           }
           break;
@@ -840,17 +976,37 @@
           }
           break;
         case 'goal':
-          if (c.t > 3.2) { c.step = 'wait'; c.t = 0; FC.UI.coachHide(); }
+          if (c.t > 3.2) {
+            c.step = 'water'; c.t = 0;
+            this.coachSay('water', 'Read the water', 'The current at the edge carries slow cakes round; the calm pool inside the ring draws them in');
+            this.foamPulse = 4;
+          }
+          break;
+        case 'water':
+          if (c.t > 4.2) { c.step = 'order'; c.t = 0; }
+          break;
+        case 'order':
+          if (c.t > 0.2) {
+            c.step = 'order2'; c.t = 0;
+            this.coachSay('order', 'Fill the order: ' + this.stageGoal + ' merges', 'Then the pond whirls and the next stage begins');
+            FC.UI.pulseStage();
+          }
+          break;
+        case 'order2':
+          if (c.t > 3.4) { c.step = 'wait'; c.t = 0; FC.UI.coachHide(); }
           break;
         case 'wait':
-          if (this.shots >= 4 || this.nearRing()) {
+          if (this.shots >= 6 || this.nearRing()) {
             c.step = 'ring'; c.t = 0;
             this.ringPulse = 4.5;
-            this.coachSay('ring', 'Keep the cakes inside the ring!', 'If they pile up past it, the pond overflows');
+            this.coachSay('ring', 'Keep the cakes in the calm water!', 'A cake resting in the current overflows the pond');
           }
           break;
         case 'ring':
-          if (c.t > 3.8) { FC.UI.coachHide(); FC.store.set('coach', COACH_DONE); this.coach = null; }
+          if (c.t > 3.8) { c.step = 'done'; c.t = 0; }
+          break;
+        case 'done':
+          FC.UI.coachHide(); FC.store.set('coach', COACH_DONE); this.coach = null;
           break;
       }
     },
@@ -898,39 +1054,53 @@
       }
       if (this.overT > 1.0 && !this.overShown && (this.world.count() === 0 || this.overT > 3.2)) {
         this.overShown = true;
-        FC.UI.showOver({ score: this.score, best: this.best, newBest: this.newBest, maxTier: this.maxTier, merges: this.merges, combo: this.bestCombo, level: this.level });
+        FC.UI.showOver({ score: this.score, best: this.best, newBest: this.newBest, maxTier: this.maxTier, merges: this.merges, combo: this.bestCombo, stage: this.stage });
       }
     },
 
     // ------------------------------------------------------------
     // per-frame update
     // ------------------------------------------------------------
-    // the whirlpool turns faster as the levels go up
-    swirlTarget() {
-      if (this.state === 'title') return 0.1;
-      const k = FC.clamp((this.level - 1) / 9, 0, 1);
-      return FC.lerp(CFG.SWIRL_MIN, CFG.SWIRL_MAX, k);
+    // the water: the calm pool (= the dotted ring) widens with every stage and turns a little faster,
+    // the rim current races a little more, and the stage whirl adds a spin everywhere
+    setWater(instant, dt) {
+      const W = this.world;
+      const k = this.state === 'title' ? 0.3 : FC.clamp((this.stage - 1) / 9, 0, 1);
+      const om = FC.lerp(CFG.OMEGA_MIN, CFG.OMEGA_MAX, k);
+      const vr = FC.lerp(CFG.VRIM_MIN, CFG.VRIM_MAX, k);
+      const ring = this.state === 'title' ? CFG.DANGER : ringFor(this.maxTier);
+      if (instant || !dt) { W.omegaCore = om; W.vRim = vr; this.ring = ring; }
+      else {
+        const kk = FC.damp(0.8, dt);
+        W.omegaCore += (om - W.omegaCore) * kk;
+        W.vRim += (vr - W.vRim) * kk;
+        // the pool widens when a bigger cake is baked (and never shrinks under the player)
+        if (ring > this.ring) this.ring = Math.min(ring, this.ring + 90 * dt);
+        else if (ring < this.ring) this.ring = ring;
+      }
+      W.rCalm = this.ring;
+      W.spin = this.whirl ? this.whirl.omega : 0;
+      this.whirlPhase += (W.omegaCore + W.spin) * (dt || 0);
     },
 
     update(dt) {
       this.t += dt;
       S.update(dt);
-      if (this.state !== 'paused') {
-        const W = this.world;
-        W.swirl += (this.swirlTarget() - W.swirl) * FC.damp(0.8, dt);
-        this.whirlPhase += W.swirl * dt;
-      }
+      if (this.state !== 'paused') this.setWater(false, dt);
       const pdt = this.hitstop > 0 ? dt * 0.06 : dt;
       this.hitstop = Math.max(0, this.hitstop - dt);
       if (this.state === 'playing' || this.state === 'title' || this.state === 'over') this.world.step(pdt);
       if (this.state !== 'paused') {
         this.updateBodies(dt);
+        this.updateFoam(dt);
         FX.update(dt);
       }
       if (this.state === 'playing') {
         if (this.cool > 0) this.cool -= dt;
         if (this.aim.active) this.computeAim();
-        this.updateDanger(dt);
+        this.updateWhirl(pdt); // runs on physics time, so hit-stops do not eat the spin
+        this.updateStageDone(dt);
+        if (!this.whirl) this.updateDanger(dt);
         this.updateCoach(dt);
         this.updatePending(dt);
         if (this.bubble) {
@@ -970,9 +1140,8 @@
         const sp = b.speed();
         if (b.launched && sp < 140) b.launched = false;
         if (b.gliding && b.age > 0.12) {
-          FC.Physics.water(b.x, b.y, this.world.swirl, WTMP);
-          const fk = FC.Physics.floatK(sp);
-          if (Math.hypot(b.vx - WTMP.x * fk, b.vy - WTMP.y * fk) < 60) {
+          this.world.feltFlow(b.x, b.y, sp, WTMP, b.r);
+          if (Math.hypot(b.vx - WTMP.x, b.vy - WTMP.y) < 60) {
             b.gliding = false;
             if (this.state === 'playing') { AU.plip(b.tier); FX.ripple(b.x, b.y, b.r * 0.9, 0.45, 260); }
           }
@@ -992,20 +1161,122 @@
       }
     },
 
+    // ------------------------------------------------------------
+    // foam flecks and petals that ride the current – the water you can read
+    // ------------------------------------------------------------
+    buildFoam() {
+      this.foam = [];
+      for (let i = 0; i < FOAM_N; i++) this.foam.push(this.newFoam(true));
+      this.streaks = [];
+      for (let i = 0; i < STREAK_N; i++) this.streaks.push({ a: Math.random() * TAU, k: Math.random(), len: FC.rand(0.35, 0.7), ph: Math.random() * TAU });
+    },
+    newFoam(anywhere) {
+      const W = this.world;
+      const a = Math.random() * TAU;
+      // most flecks ride the rim band, a few drift in the calm middle (they show the drain)
+      const band = anywhere ? Math.random() < 0.75 : Math.random() < 0.85;
+      const r0 = band ? FC.lerp(W.rCalm + 30, CFG.R - 40, Math.random()) : FC.lerp(CFG.INFLOW_CORE + 40, W.rCalm - 20, Math.random());
+      const life = FC.rand(3.5, 7);
+      return { x: Math.cos(a) * r0, y: Math.sin(a) * r0, t: anywhere ? Math.random() * life : 0, life, s: FC.rand(0.6, 1.3), petal: Math.random() < 0.4, ph: Math.random() * TAU, vx: 0, vy: 0 };
+    },
+    updateFoam(dt) {
+      if (!this.foam.length) return;
+      const W = this.world;
+      const F = WTMP;
+      for (let i = 0; i < this.foam.length; i++) {
+        const f = this.foam[i];
+        f.t += dt;
+        W.flowAt(f.x, f.y, F, 60);
+        // petals are light: they follow the water fully, with a tiny wobble
+        f.vx = F.x; f.vy = F.y;
+        f.x += (F.x + Math.cos(f.ph + this.t * 3) * 12) * dt;
+        f.y += (F.y + Math.sin(f.ph + this.t * 2.3) * 12) * dt;
+        const d = Math.hypot(f.x, f.y);
+        if (f.t > f.life || d < CFG.INFLOW_CORE * 0.9 || d > CFG.R - 20) this.foam[i] = this.newFoam(false);
+      }
+      if (this.foamPulse > 0) this.foamPulse -= dt;
+      // the streaks sit in the band and turn with the water there
+      for (const st of this.streaks) {
+        const r = FC.lerp(W.rCalm + 50, CFG.R - 45, st.k);
+        st.a += W.omegaAt(r) * dt;
+      }
+    },
+    drawFoam(ctx) {
+      if (!this.foam.length) return;
+      const pal = [['#ffffff', '#ffd6ea', '#ffb3d9'], ['#ffffff', '#ffe27a', '#8fe3ff'], ['#fff6c8', '#ffffff', '#d6e8ff'], ['#ffffff', '#ffb3c6', '#b5f0c8', '#c9c0ff']][S.theme % 4];
+      const boost = this.foamPulse > 0 ? 1 + 0.6 * Math.min(1, this.foamPulse) : 1;
+      const W = this.world;
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(S.cx, S.cy, S.pr * 0.99, S.pr * S.K * 0.99, 0, 0, TAU);
+      ctx.clip();
+      const base = Math.max(1.6, S.pr * 0.011);
+      // long streaks: the racing water of the rim band
+      if (this.state !== 'title') {
+        ctx.lineCap = 'round';
+        for (const st of this.streaks) {
+          const r = FC.lerp(W.rCalm + 50, CFG.R - 45, st.k) * S.s;
+          const pulse = 0.55 + 0.45 * Math.sin(this.t * 1.3 + st.ph);
+          ctx.beginPath();
+          ctx.ellipse(S.cx, S.cy, r, r * S.K, 0, st.a, st.a + st.len);
+          ctx.lineWidth = base * 1.1;
+          ctx.strokeStyle = FC.rgba(pal[0], 0.22 * pulse * boost);
+          ctx.stroke();
+        }
+      }
+      for (let i = 0; i < this.foam.length; i++) {
+        const f = this.foam[i];
+        const k = Math.sin(Math.PI * Math.min(1, f.t / f.life));
+        if (k <= 0.03) continue;
+        const p = S.w2s(f.x, f.y);
+        const sp = Math.hypot(f.vx, f.vy);
+        const al = (0.22 + 0.5 * Math.min(1, sp / 450)) * k * boost;
+        if (f.petal) {
+          // a little blossom petal, turned along the flow
+          const ang = Math.atan2(f.vy * S.K, f.vx) + Math.sin(f.ph + this.t * 2) * 0.5;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(ang);
+          ctx.beginPath();
+          ctx.ellipse(0, 0, base * 2.2 * f.s, base * 1.3 * f.s, 0, 0, TAU);
+          ctx.fillStyle = FC.rgba(pal[1 + (i % (pal.length - 1))], Math.min(0.9, al + 0.15));
+          ctx.fill();
+          ctx.restore();
+        } else {
+          // a foam fleck: stretched along the flow when the water is fast
+          const len = Math.min(5, sp / 110);
+          const ux = f.vx / (sp || 1), uy = (f.vy / (sp || 1)) * S.K;
+          ctx.beginPath();
+          ctx.moveTo(p.x - ux * base * len, p.y - uy * base * len);
+          ctx.lineTo(p.x + ux * base * len, p.y + uy * base * len);
+          ctx.lineWidth = base * 1.6 * f.s;
+          ctx.lineCap = 'round';
+          ctx.strokeStyle = FC.rgba(pal[0], al);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    },
+
     updateDanger(dt) {
       let worst = null, max = 0;
-      for (const b of this.world.bodies) {
+      const W = this.world;
+      for (const b of W.bodies) {
         if (b.dead || b.sensor) continue;
         const d = Math.hypot(b.x, b.y) || 1;
         const edge = d + b.r;
+        // "at rest" is measured against the water: a cake riding the rim current beyond the ring counts
+        // (it has to make it in), a cake still being carried inwards does not
+        W.flowAt(b.x, b.y, WTMP, b.r);
+        const rel = Math.hypot(b.vx - WTMP.x, b.vy - WTMP.y);
         const inward = -(b.x * b.vx + b.y * b.vy) / d; // > 0 while the current still carries it in
-        if (edge > CFG.DANGER && b.age > 1.1 && b.speed() < 420 && inward < 70) b.danger += dt;
+        if (edge > this.ring && b.age > 1.1 && rel < 420 && inward < 90) b.danger += dt;
         else b.danger = Math.max(0, b.danger - dt * 1.5);
         if (b.danger > max) { max = b.danger; worst = b; }
       }
       this.danger = max;
       this.dangerBody = worst;
-      if (max > 0.3) {
+      if (max > CFG.WARN_AT) {
         this.warnT -= dt;
         if (this.warnT <= 0) { AU.danger(); this.warnT = 0.9; }
         if (!this.dangerHinted && !this.coach && !this.wandMode) {
@@ -1018,7 +1289,7 @@
         }
         if (this.tilly.mood !== 'cheer') { this.tilly.mood = 'worried'; this.tilly.moodT = 0.3; }
       }
-      FC.UI.setDanger(max > 0.3);
+      FC.UI.setDanger(max > CFG.WARN_AT);
       if (max >= CFG.DANGER_TIME) this.gameOver(worst);
     },
 
@@ -1092,7 +1363,7 @@
 
     // the animated hand that demonstrates the pull-back gesture
     updateHint() {
-      if (this.handT < 0 || this.state !== 'playing' || this.queue[0] == null) {
+      if (this.state !== 'playing' || this.queue[0] == null || this.handT < 0) {
         this.hint = null;
         if (FC.UI.handOver) FC.UI.setHandOver(false);
         return;
@@ -1104,9 +1375,9 @@
       else if (u < 1.35) { alpha = 1; press = 1; pull = easeInOut((u - 0.45) / 0.9); }
       else if (u < 1.75) { alpha = 1; press = 1; pull = 1; }
       else if (u < 2.05) { alpha = 1 - (u - 1.75) / 0.3; }
-      const prev = this.hint ? this.hint.u : 0;
+      const prev = this.hint && this.hint.kind === 'pull' ? this.hint.u : 0;
       if (prev < 1.75 && u >= 1.75) this.sling.snap = 1; // "let go": the ribbon twangs
-      this.hint = { alpha, pull, press, u };
+      this.hint = { kind: 'pull', alpha, pull, press, u };
       // does the hand reach down into the cake ladder?
       const L = FC.UI.ladderRect, g = this.slingGround();
       const s = FC.clamp(S.pr * 0.17, 26, 52);
@@ -1127,12 +1398,11 @@
         const k = easeInOut(Math.min(1, d.t / 0.55));
         const pull = this.maxPull() * (0.15 + 0.35 * d.power) * k; // shorter than real, the title card sits below
         const sx = d.dir.x, sy = d.dir.y * S.K, sl = Math.hypot(sx, sy) || 1;
-        return { L: d.L, dir: d.dir, power: d.power * k, pred: k > 0.5 ? d.pred : null, tier, offX: -(sx / sl) * pull * 0.4, offY: -(sy / sl) * pull * 0.4, gripX: -(sx / sl) * pull, gripY: -(sy / sl) * pull, mode: 'sling', alpha: k };
+        return { L: d.L, dir: d.dir, power: d.power * k, pred: k > 0.5 ? d.pred : null, tier, offX: -(sx / sl) * pull * 0.4, offY: -(sy / sl) * pull * 0.4, gripX: -(sx / sl) * pull, gripY: -(sy / sl) * pull, alpha: k };
       }
       const a = this.aim;
       if (a.active && a.valid) {
-        const sling = a.mode === 'sling';
-        return { L: a.L, dir: a.dir, power: a.power, pred: a.pred, tier, offX: a.offX, offY: a.offY, gripX: sling ? a.gripX : 0, gripY: sling ? a.gripY : 0, mode: a.mode || 'point', target: a.target, alpha: 1 };
+        return { L: a.L, dir: a.dir, power: a.power, pred: a.pred, tier, offX: a.offX, offY: a.offY, gripX: a.gripX, gripY: a.gripY, alpha: 1 };
       }
       return null;
     },
@@ -1182,12 +1452,15 @@
       ctx.clip();
       FX.drawWater(ctx, S);
       ctx.restore();
-      S.drawWaterFX(ctx, this.t, this.state === 'title' ? 0.6 : 1, this.whirlPhase);
+      const whirlK = this.whirl ? Math.min(1, this.whirl.omega / 1.2) : 0;
+      this.drawPool(ctx);
+      S.drawWaterFX(ctx, this.t, this.state === 'title' ? 0.6 : 1 + whirlK * 2.2, this.whirlPhase);
+      this.drawFoam(ctx);
       if (this.state === 'playing' || this.state === 'paused') this.drawDangerRing(ctx);
       this.drawShadows(ctx);
       const view = this.shotView();
       if (view) this.drawAimPath(ctx, view);
-      else if (this.hint) this.drawHintPath(ctx);
+      else if (this.hint && this.hint.kind === 'pull') this.drawHintPath(ctx);
       this.drawBodies(ctx);
       S.drawFrontLayer(ctx);
       if (view) this.drawAimTop(ctx, view);
@@ -1201,8 +1474,8 @@
       this.drawGrip(ctx);
       if (this.hint) this.drawHand(ctx);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (this.danger > 0.3 && this.state === 'playing') {
-        const k = FC.clamp((this.danger - 0.3) / (CFG.DANGER_TIME - 0.3), 0, 1);
+      if (this.danger > CFG.WARN_AT && this.state === 'playing') {
+        const k = FC.clamp((this.danger - CFG.WARN_AT) / (CFG.DANGER_TIME - CFG.WARN_AT), 0, 1);
         const pulse = 0.5 + 0.5 * Math.sin(this.t * (6 + k * 8));
         const g = ctx.createRadialGradient(this.W / 2, this.H / 2, Math.min(this.W, this.H) * 0.35, this.W / 2, this.H / 2, Math.max(this.W, this.H) * 0.75);
         g.addColorStop(0, 'rgba(255,60,120,0)');
@@ -1220,8 +1493,24 @@
       }
     },
 
+    // the calm pool: a touch lighter and glassier than the racing water round it
+    drawPool(ctx) {
+      if (this.state === 'title') return;
+      const pr = this.ring * S.s, K = S.K;
+      const g = ctx.createRadialGradient(S.cx, S.cy, pr * 0.55, S.cx, S.cy, pr * 1.02);
+      g.addColorStop(0, 'rgba(255,255,255,0.1)');
+      g.addColorStop(0.85, 'rgba(255,255,255,0.08)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(S.cx, S.cy, pr * 1.02, pr * K * 1.02, 0, 0, TAU);
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.restore();
+    },
+
     drawDangerRing(ctx) {
-      const pr = CFG.DANGER * S.s;
+      const pr = this.ring * S.s;
       const K = S.K;
       const k = FC.clamp(this.danger / CFG.DANGER_TIME, 0, 1);
       const rp = this.ringPulse > 0 ? 0.5 + 0.5 * Math.sin(this.ringPulse * 7) : 0;
@@ -1238,7 +1527,7 @@
       const col = k > 0.1 ? FC.mix('#ffffff', '#ff4f86', Math.min(1, k * 1.6)) : this.ringPulse > 0 ? '#ffe0ef' : S.theme === 2 ? '#fff6c8' : '#ffffff';
       const alpha = 0.62 + (k > 0.1 ? 0.3 * (0.5 + 0.5 * Math.sin(this.t * 10)) : 0);
       ctx.setLineDash([Math.max(4, pr * 0.03), Math.max(6, pr * 0.045)]);
-      ctx.lineDashOffset = -this.t * 18;
+      ctx.lineDashOffset = -this.whirlPhase * pr * 0.9 - this.t * 18;
       ctx.beginPath();
       ctx.ellipse(S.cx, S.cy, pr, pr * K, 0, 0, TAU);
       ctx.lineWidth = Math.max(1.8, S.pr * 0.013);
@@ -1246,7 +1535,7 @@
       ctx.stroke();
       ctx.setLineDash([]);
       for (let i = 0; i < 10; i++) {
-        const a = (i / 10) * TAU + this.t * 0.12;
+        const a = (i / 10) * TAU + this.t * 0.12 + this.whirlPhase;
         const x = S.cx + Math.cos(a) * pr, y = S.cy + Math.sin(a) * pr * K;
         const tw = 0.5 + 0.5 * Math.sin(this.t * 3 + i * 1.7);
         FC.sparklePath(ctx, x, y, (2 + tw * 3) * (S.pr / 300 + 0.5), 0.3);
@@ -1257,19 +1546,19 @@
         if (b.dead || b.sensor) continue;
         const d = Math.hypot(b.x, b.y);
         const edge = d + b.r;
-        if (edge < CFG.DANGER - 60 || b.age < 1.1) continue;
+        if (edge < this.ring - 60 || b.age < 1.1) continue;
         const a = Math.atan2(b.y, b.x);
-        const intensity = FC.clamp((edge - (CFG.DANGER - 60)) / 90, 0, 1) * (b.danger > 0 ? 1 : 0.5);
-        const span = (b.r / CFG.DANGER) * 1.2;
+        const intensity = FC.clamp((edge - (this.ring - 60)) / 90, 0, 1) * (b.danger > 0 ? 1 : 0.5);
+        const span = (b.r / this.ring) * 1.2;
         ctx.beginPath();
         ctx.ellipse(S.cx, S.cy, pr, pr * K, 0, a - span, a + span);
         ctx.lineWidth = Math.max(3, S.pr * 0.03);
-        ctx.strokeStyle = FC.rgba(b.danger > 0.3 ? '#ff4f86' : '#ffd1e4', 0.35 + 0.45 * intensity);
+        ctx.strokeStyle = FC.rgba(b.danger > CFG.WARN_AT ? '#ff4f86' : '#ffd1e4', 0.35 + 0.45 * intensity);
         ctx.stroke();
       }
       ctx.restore();
       const db = this.dangerBody;
-      if (db && this.danger > 0.3 && !db.dead) {
+      if (db && this.danger > CFG.WARN_AT && !db.dead) {
         const left = Math.max(0, CFG.DANGER_TIME - this.danger);
         const p = S.w2s(db.x, db.y);
         const r = db.r * S.s;
@@ -1381,7 +1670,7 @@
       let expr = b ? b.expr : null;
       if (b && !expr) {
         if (b.launched && b.speed() > 500) expr = 'wee';
-        else if (b.danger > 0.15 || (Math.hypot(b.x, b.y) + b.r > CFG.DANGER && b.age > 1.1)) expr = 'worried';
+        else if (b.danger > 0.15 || (Math.hypot(b.x, b.y) + b.r > this.ring && b.age > 1.1)) expr = 'worried';
       }
       FC.Cakes.drawFace(ctx, tier, { expr: expr || 'normal', blink: b ? b.blink : 0, lookX: b ? b.lookX : 0, lookY: b ? b.lookY : 0.3 });
       ctx.restore();
@@ -1449,18 +1738,32 @@
       const n = pts.length;
       const rad = Math.max(2.4, S.pr * 0.015);
       for (let i = 1; i < n; i++) {
-        const q = S.w2s(pts[i].x, pts[i].y);
+        const pt = pts[i];
+        const q = S.w2s(pt.x, pt.y);
         const f = i / n;
-        const al = (0.95 - f * 0.55) * v.alpha;
-        const wave = 1 + 0.4 * Math.max(0, Math.sin(i * 0.75 - this.t * 10));
+        const drift = !!pt.drift;
+        // after the landing the current carries the cake on: smaller, calmer dots
+        const al = (drift ? 0.5 : 0.95 - f * 0.55) * v.alpha;
+        const wave = drift ? 1 + 0.25 * Math.max(0, Math.sin(i * 0.75 - this.t * 4)) : 1 + 0.4 * Math.max(0, Math.sin(i * 0.75 - this.t * 10));
         ctx.beginPath();
-        ctx.arc(q.x, q.y, rad * (1 - f * 0.35) * wave, 0, TAU);
+        ctx.arc(q.x, q.y, rad * (drift ? 0.55 : 1 - f * 0.35) * wave, 0, TAU);
         ctx.fillStyle = FC.rgba(col, al);
         ctx.fill();
         ctx.lineWidth = 1.2;
         ctx.strokeStyle = FC.rgba(match ? '#ffffff' : '#7f6ad0', al * 0.6);
         ctx.stroke();
       }
+    },
+
+    // a heart over cakes that will merge
+    drawHeart(ctx, x, y, s, phase) {
+      const ss = s * (1 + 0.12 * Math.sin(this.t * 10 + (phase || 0)));
+      FC.heartPath(ctx, x, y, ss);
+      ctx.fillStyle = '#ff6fa8';
+      ctx.fill();
+      ctx.lineWidth = Math.max(1.5, ss * 0.18);
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
     },
 
     drawAimTop(ctx, v) {
@@ -1474,6 +1777,7 @@
         const q = S.w2s(h.x, h.y);
         const rr = r * S.s;
         const match = this.predMatch(pred, tier);
+        // the ghost at the point of contact
         ctx.beginPath();
         ctx.ellipse(q.x, q.y, rr, rr * S.K, 0, 0, TAU);
         ctx.setLineDash([5, 5]);
@@ -1484,28 +1788,25 @@
         const hp = S.w2s(h.bx != null ? h.bx : h.body.x, h.by != null ? h.by : h.body.y);
         if (match) {
           const hr = h.body.r * S.s;
-          const s = Math.max(10, rr * 0.55) * (1 + 0.12 * Math.sin(this.t * 10));
-          const hx = (q.x + hp.x) / 2, hy = (q.y + hp.y) / 2 - hr * 1.3;
-          FC.heartPath(ctx, hx, hy, s);
-          ctx.fillStyle = '#ff6fa8';
-          ctx.fill();
-          ctx.lineWidth = 2.5;
-          ctx.strokeStyle = '#ffffff';
-          ctx.stroke();
-        } else {
+          const s = Math.max(10, rr * 0.55);
+          this.drawHeart(ctx, (q.x + hp.x) / 2, (q.y + hp.y) / 2 - hr * 1.3, s, 0);
+        } else if (!h.body.sensor) {
+          // no match: a short arrow along the line of centres – the direction the hit cake is pushed in.
+          // How far it goes, and what that sets off, is for the player to judge
           const dx = hp.x - q.x, dy = hp.y - q.y, d = Math.hypot(dx, dy) || 1;
           const len = Math.max(14, rr * 0.9) * (0.4 + v.power);
+          const x0 = hp.x + (dx / d) * h.body.r * S.s * 0.3, y0 = hp.y + (dy / d) * h.body.r * S.s * 0.3;
           const ex = hp.x + (dx / d) * len, ey = hp.y + (dy / d) * len;
           ctx.beginPath();
-          ctx.moveTo(hp.x + (dx / d) * h.body.r * S.s * 0.3, hp.y + (dy / d) * h.body.r * S.s * 0.3);
+          ctx.moveTo(x0, y0);
           ctx.lineTo(ex, ey);
           ctx.lineWidth = 3;
           ctx.strokeStyle = 'rgba(255,255,255,0.8)';
           ctx.lineCap = 'round';
           ctx.stroke();
         }
-      }
-      if (pred && !pred.hit && pred.end) {
+      } else if (pred && pred.end) {
+        // nothing in the way: a dashed ghost where the cake comes to rest
         const q = S.w2s(pred.end.x, pred.end.y);
         const rr = r * S.s;
         ctx.beginPath();
@@ -1516,28 +1817,13 @@
         ctx.stroke();
         ctx.setLineDash([]);
       }
-      // aiming at a spot: small target where the finger / mouse is
-      if (v.mode === 'point' && v.target) {
-        const q = S.w2s(v.target.x, v.target.y);
-        const s = Math.max(8, S.pr * 0.04);
-        ctx.translate(q.x, q.y);
-        ctx.rotate(this.t * 1.5);
-        ctx.beginPath();
-        ctx.ellipse(0, 0, s, s * S.K, 0, 0, TAU);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.stroke();
-        FC.sparklePath(ctx, 0, 0, s * 0.55, 0.3);
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
-        ctx.fill();
-      }
       ctx.restore();
     },
 
     // ghost dots of the tutorial hand: "this is where it will go"
     drawHintPath(ctx) {
       const h = this.hint;
-      if (!h || h.pull <= 0.05) return;
+      if (!h || h.kind !== 'pull' || h.pull <= 0.05) return;
       const g = this.slingGround();
       const rr = TIERS[this.queue[0]].r * S.s;
       const step = S.pr * 0.075;
@@ -1567,8 +1853,9 @@
       const wT = Math.max(rr + S.pr * 0.07, S.pr * 0.15);
       this.sling.w = this.sling.w ? this.sling.w + (wT - this.sling.w) * 0.25 : wT;
       let offX = 0, offY = 0, gripX = 0, gripY = 0;
+      const pullHint = this.hint && this.hint.kind === 'pull' ? this.hint : null;
       if (view) { offX = view.offX; offY = view.offY; gripX = view.gripX || 0; gripY = view.gripY || 0; }
-      else if (this.hint) { gripY = this.maxPull() * 0.7 * this.hint.pull; offY = gripY * 0.5; }
+      else if (pullHint) { gripY = this.maxPull() * 0.7 * pullHint.pull; offY = gripY * 0.5; }
       let x = g.x + offX, y = g.y + offY, sc = 1;
       let flying = false;
       if (this.fly && this.state === 'playing') {
@@ -1581,7 +1868,7 @@
       }
       const pop = this.launcher.pop < 1 ? 0.3 + 0.7 * FC.ease.outBack(this.launcher.pop) : 1;
       sc *= pop * (1 + 0.07 * this.grab); // the cake "lifts" a little when you grab it
-      const tension = view ? view.power : this.hint ? 0.6 * this.hint.pull : 0;
+      const tension = view ? view.power : pullHint ? 0.6 * pullHint.pull : 0;
       if (tension > 0.97) { x += Math.sin(this.t * 95) * 0.9; y += Math.cos(this.t * 83) * 0.6; } // trembling at full power
       this.grip = null;
       if (Math.hypot(gripX, gripY) > 6 && !flying) this.grip = { x0: g.x + offX, y0: g.y + offY - rr * 0.45, x1: g.x + gripX, y1: g.y - rr * 0.45 + gripY };
@@ -1751,11 +2038,12 @@
     drawHand(ctx) {
       const h = this.hint;
       if (!h || h.alpha <= 0.01) return;
+      const s = FC.clamp(S.pr * 0.17, 26, 52);
       const g = this.slingGround();
       const rr = TIERS[this.queue[0]].r * S.s;
-      const s = FC.clamp(S.pr * 0.17, 26, 52);
       const pullY = this.maxPull() * 0.7 * h.pull;
-      const fx = g.x + rr * 0.15, fy = g.y - rr * 0.45 + pullY + (1 - h.press) * s * 0.18;
+      const fx = g.x + rr * 0.15;
+      const fy = g.y - rr * 0.45 + pullY + (1 - h.press) * s * 0.18;
       ctx.save();
       ctx.globalAlpha = h.alpha;
       if (h.press > 0.5 && h.pull < 0.05) {

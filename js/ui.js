@@ -117,7 +117,7 @@
       $('hud').classList.remove('hidden');
       $('hud').classList.remove('danger');
       this.setScore(0);
-      this.setLevel(1, 0);
+      this.setStage(1, 0, G().stageGoal);
       this.layout();
       this.updatePowers();
       this.setLadder(G().maxTier);
@@ -150,7 +150,7 @@
       $('overScore').textContent = st.score;
       $('overBest').textContent = st.best;
       $('newBest').classList.toggle('hidden', !st.newBest);
-      $('overLevel').textContent = st.level;
+      $('overLevel').textContent = st.stage;
       $('overMerges').textContent = st.merges;
       $('overCombo').textContent = 'x' + Math.max(1, st.combo);
       $('overCakeName').textContent = TIERS[st.maxTier].name;
@@ -172,9 +172,26 @@
       p.classList.add('bump');
     },
 
-    setLevel(lv, frac) {
-      $('lvl').textContent = lv;
-      $('lvlbar').style.width = Math.round(FC.clamp(frac, 0, 1) * 100) + '%';
+    // the order of the stage: n merges fill the bar
+    setStage(stage, merges, goal) {
+      $('lvl').textContent = stage;
+      const g = $('goal');
+      const left = Math.max(0, goal - merges);
+      g.textContent = left > 0 ? left + ' to go' : 'done!';
+      $('lvlbar').style.width = Math.round(FC.clamp(merges / goal, 0, 1) * 100) + '%';
+      const p = $('scorePill');
+      if (merges > 0 && left > 0) {
+        p.classList.remove('tick');
+        void p.offsetWidth;
+        p.classList.add('tick');
+      }
+      p.classList.toggle('full', left <= 0);
+    },
+    pulseStage() {
+      const p = $('scorePill');
+      p.classList.remove('pulse');
+      void p.offsetWidth;
+      p.classList.add('pulse');
     },
 
     updateNext(pulse) {
@@ -403,6 +420,37 @@
           ctx.moveTo(22, 36); ctx.lineTo(22, 44); ctx.moveTo(18, 41); ctx.lineTo(22, 45); ctx.lineTo(26, 41);
           ctx.stroke();
           icon(2, 44, 48, 32);
+        } else if (kind === 'water') {
+          // the pond: a current racing round the rim (arrows + foam), a calm middle with the pile
+          ctx.beginPath();
+          ctx.ellipse(32, 36, 28, 20, 0, 0, FC.TAU);
+          ctx.fillStyle = '#7bdbe8';
+          ctx.fill();
+          ctx.beginPath();
+          ctx.ellipse(32, 36, 15, 10.5, 0, 0, FC.TAU);
+          ctx.fillStyle = '#95e4ee';
+          ctx.fill();
+          icon(3, 30, 33, 18);
+          icon(1, 40, 40, 13);
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2.6;
+          ctx.lineCap = 'round';
+          for (const [a0, a1] of [[Math.PI * 1.1, Math.PI * 1.7], [Math.PI * 0.1, Math.PI * 0.7]]) {
+            ctx.beginPath();
+            ctx.ellipse(32, 36, 23, 16, 0, a0, a1);
+            ctx.stroke();
+            const ex = 32 + Math.cos(a1) * 23, ey = 36 + Math.sin(a1) * 16;
+            const tx = -Math.sin(a1), ty = Math.cos(a1) * 0.7;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.moveTo(ex + tx * 5, ey + ty * 5);
+            ctx.lineTo(ex - ty * 4 - tx * 2, ey + tx * 4 - ty * 2);
+            ctx.lineTo(ex + ty * 4 - tx * 2, ey - tx * 4 - ty * 2);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.fillStyle = '#ffb3d9';
+          for (const [x, y] of [[12, 30], [50, 44], [22, 50]]) { ctx.beginPath(); ctx.ellipse(x, y, 3, 1.8, 0.6, 0, FC.TAU); ctx.fill(); }
         } else {
           ctx.beginPath();
           ctx.ellipse(32, 36, 28, 20, 0, 0, FC.TAU);
