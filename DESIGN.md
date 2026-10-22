@@ -1,14 +1,114 @@
-# Fairycake Falls – Game Design (prototype v0.6.2)
+# Fairycake Falls – Game Design (prototype v0.7)
 
 ## Pitch
-A cosy, endless flick-and-merge game. You flick cakes from a little slingshot
-into a round pond on a floating island. Identical cakes that touch merge into
-the next, bigger cake. The pond slowly fills up. Play for a high score.
+A cosy flick-and-merge game about *collecting cakes*. You flick cakes from a little slingshot
+into a round pond on a floating island. Cakes of the same size that touch merge into the next,
+bigger cake. Five worlds, each with its own menu of eleven cakes and eight recipes to bake; every
+cake you bake for the first time goes into the Cake Book with its name, its story and its ingredients.
 
 **What makes it different from Suika-likes:** nothing is dropped from the top or
 floats up from the bottom. You *pull back and flick*, Golf-With-Your-Friends
 style, into a loose cluster of cakes floating in a pond with a current of its own.
 Bank shots, rides on the current, knock-ons and chain reactions replace the dropping column.
+
+## Design goal for v0.7: a collection, worlds and levels
+v0.6 was a tuned endless game with one ladder of eleven cakes. The drawing board (`drawing_board/`: the first
+vision sheet, `idea.jpg` with kawaii cake art direction, `enchanted_cake_kingdom.pdf` with five themed worlds and a
+hundred enchanted cake names) asked for a different flavour: **the collector in the foreground** – more cakes,
+horizontally as well as vertically, with cute names and a little lore – and **depth**: worlds and levels to unlock,
+with a map in the spirit of Super Mario.
+
+The pieces, and why they are shaped this way:
+
+- **Shape = size, world = flavour.** The eleven tiers keep their radii and silhouettes (macaron, bite, cupcake,
+  tart, drum cakes, a six-layer cake, a winged torte, a crowned royal cake), so "same size merges" stays as readable
+  as before and the tuned physics is untouched. What changes between worlds is the *menu*: every world has its own
+  cake for every tier (`js/cakes.js` → `KINDS`, `WORLD_MENUS`). Inside a level all cakes of one tier look the same,
+  so the merge rule never needs explaining; across levels and worlds the book fills horizontally: 5 × 11 cakes, plus
+  five rare finds and the Magic Cake – **61 entries**, 60 to collect.
+- **One recipe per level.** Level *n* of a world asks for the world's tier 3 + *n* cake ("Bake the Lavender Dream"),
+  shown as a silhouette with a hint until it has been baked once. Clearing the level *is* the discovery: the clear
+  card reveals the cake with its epithet and lore. Tiers 2 and 3 of a new world are discovered on the way in its
+  first level.
+- **Start clusters with a gap in the ladder.** To keep levels at a few dozen merges rather than the hundreds a
+  tier-11 bake needs from scratch, the pond starts with some bigger cakes already in it (the castle's doing). A
+  complete ladder would cascade – one bake of a tier-4 would run up to the goal by itself – so every start has a
+  gap (level 8: a 10, 9, 8 and 6 among the small fry: the 7 *and* the 5 are missing, so baking the second 10 takes
+  ~40 merges; a single missing rung is bridged by the rung below it and barely costs anything).
+  The small cakes are 1s and 2s only (and one 3 at most) so that nothing chains for free in the first flick.
+  Big cakes are packed in the middle, small ones round them, never next to a twin (`setupStart` in `game.js`:
+  a ring layout with a backtracking colouring for small clusters, a greedy packing for big ones, and a repair step
+  that swaps twins the water has pressed together).
+- **Stars from the score at the moment the goal is baked.** Combos, streaks and stage multipliers are where the skill
+  is; the thresholds (`STARS` in `levels.js`) come from the careful bot's median score per level (★★ ≈ 45 %,
+  ★★★ ≈ 85 % of it – the bot sees a look-ahead humans do not, but a person takes more flicks, fills more orders and
+  so plays with a higher stage multiplier). The score is taken when the clear card appears, so the chain that bakes
+  the goal still counts. Orders and the whirl keep setting the beat inside a level. **Magic Cakes are scarce in a
+  level** (the fifth order, then every third; a bubble holds one only once in six): handed out at the first order,
+  the joker would upgrade the biggest start cake straight to the goal and skip the climb – late in a level it is the
+  finisher it should be. Level gifts are Wands for the same reason.
+- **Unlocking.** The next level opens with one star; the next world opens after level 5 of the previous one, so the
+  royal levels 6–8 of a world never wall anybody off and the map always has somewhere new to go.
+- **The map.** One card per world (the world's sky and castle island, painted from the same layers the pond uses),
+  a winding path with eight nodes (the level's cake, its stars, a lock), Tilly waiting at the next level, arrows,
+  swipe and dots to change worlds, a lock card with the unlock rule on worlds not yet opened.
+- **Rare finds.** Five cakes (Pixie Pop, Golden Macaron, Lucky Clover Bite, Birthday Bite, Boo Cupcake) that take
+  the place of a normal cake in the sling with a chance of ~1.4 % per spawn (×2.5 in the world they like, never in
+  the tutorial). They sparkle in the sling, a tip says what they are, and they merge like any cake of their size.
+  Merging one adds it to the book and pays a bonus (40 × tier); poofing it with the wand does not count. Over a
+  40-flick level that is roughly a 40 % chance of meeting one.
+- **Endless Pond** stays as the classic mode: the island drifts into the next *unlocked* world every third stage,
+  and from then on merges and spawns wear that world's flavours (cakes already in the pond keep theirs; they still
+  merge by size). So unlocking worlds in the adventure makes the endless pond richer too.
+- **The Cake Book** has a tab per world and one for the rare finds (locked worlds show silhouettes as a teaser), a
+  count per tab, "New!" tags for this run's finds, and a detail card per cake: the cake with a happy face, tier and
+  size, epithet, lore, ingredients, where it is found (world · level, or "drifts into the sling"), and how often it
+  was baked. On a desktop, hovering a cake shows its epithet.
+- **Art.** The style painters took parameters instead of constants (frosting, sponge, toppings, decorations, drips,
+  side stripes, two-tone cupcake swirls, polka dots, drizzles, scales, conic sweeps for galaxy/aurora/rainbow tops,
+  wing tints, crown kinds). Some forty small decoration painters (honeycomb and bee, toadstool, gingerbread fellow,
+  maple leaf, pecans, acorn, brambles, coffee beans, lavender sprigs, potion bubbles, gems, snowflakes, coconut
+  flakes, gold leaf, roses, kiwi and passion fruit, unicorn horn, flame, dragon egg, seashell, a tiny tree, a
+  shooting star, a clover, a candle, a ghost …) make the 61 cakes. `tools/cakesheet.html` shows them all.
+  A fifth backdrop, **Starfall Realm** (violet pond, golden trees, a starry dusk, lit castle windows), was added to
+  the palette list in `tools/gen.js` and painted by the same generator.
+
+### Worlds and menus
+| World | Theme | Tiers 1–11 |
+| --- | --- | --- |
+| Blossom Falls · The Little Fairy Bakery | spring meadows, pink castle | Lilac Macaron, Cherry Bite, Strawberry Cupcake, Lemon Tart, Blossom Cake, Choco Cake, Peach Cake, Blueberry Cake, Rainbow Cake, Fairy Torte, Royal Fairycake |
+| Candy Woods · The Enchanted Forest | honey, nuts, berries, mint, gingerbread | Pistachio Macaron, Honey Bite, Mint Choc Cupcake, Apple Crumble Tart, Toadstool Cake, Gingerbread Cake, Maple Cake, Bramble Cake, Black Forest Cake, Acorn Torte, Woodland Queen's Cake |
+| Moonlight Bay · The Witch's Bakery | night, potions, stars | Midnight Macaron, Mocha Bite, Starberry Cupcake, Crescent Moon Tart, Lavender Dream, Witch's Brew Cake, Tiramisu Cake, Sapphire Cheesecake, Galaxy Cake, Moonbeam Torte, Moon Queen's Cake |
+| Rainbow Heights · The Royal Dessert Kingdom | clouds, gold, crystal, spun sugar | Cloud Macaron, Sunrise Bite, Cotton Candy Cupcake, Crème Brûlée Tart, Coconut Snow Cake, Opera Cake, Rosewater Cake, Pavlova Cloud, Crystal Cake, Starlight Tower, Fairy Queen's Crown Cake |
+| Starfall Realm · The Legendary Fairy Realms | dragons, unicorns, the aurora | Stardust Macaron, Dragonfruit Bite, Unicorn Cupcake, Phoenix Tart, Sugarplum Cake, Dragon Egg Cake, Aurora Cake, Mermaid Pearl Cake, World Tree Cake, Wishing Torte, Fairy Empress Cake |
+
+### Levels (the same recipe structure in every world; the mood of the water and the gifts differ)
+| Level | Goal tier | Start cluster (big cakes first) | Merges to the goal (model) | Careful bot: flicks · score at the clear (median of 4) |
+| ---: | ---: | --- | ---: | --- |
+| 1 | 4 | 2 1 2 1 2 1 · 5 6 | 2 | 3 · 41 |
+| 2 | 5 | 2 1 2 1 2 1 3 · 6 | 5 | 5 · 234 |
+| 3 | 6 | 4 · 3 2 1 2 1 2 1 · 7 | 9 | 8 · 584 |
+| 4 | 7 | 6 · 3 2 1 2 1 2 1 2 | 12 | 9 · 529 |
+| 5 | 8 | 7 4 · 3 2 1 2 1 2 1 2 1 | 22 | 17 · 1018 |
+| 6 | 9 | 8 7 4 · 3 2 1 2 1 2 1 2 | 23 | 35 · 1885 |
+| 7 | 10 | 9 8 6 5 · 3 2 1 2 1 2 1 2 (+1 Wand) | 33 | 33–36 · 1700–2050 |
+| 8 | 11 | 10 9 8 6 · 3 2 1 2 1 2 1 2 (+2 Wands) | 39 | 36–42 · 2700 (about one game in four overflows – the royal level is meant to bite) |
+
+The star thresholds (★★ / ★★★): 20/35 · 90/170 · 220/420 · 270/500 · 450/850 · 850/1600 · 950/1800 · 1300/2300.
+(Levels 1–5 were measured with the Magic Cake still coming at the fourth order; it made no difference there.)
+In a level the calm pool is as wide as the *goal* cake will need from the first flick (`ringTier`), since the big cakes
+are already there; levels 7 and 8 start with a Wand or two for the same reason.
+
+The careful bot plays with a look-ahead that people do not have and chains two to three merges per flick; a person
+should expect about twice the flicks. A few levels carry a *mood*: a slower or faster rim current, a quicker
+turn of the pool, a Wand or a Magic Cake to start with, or a pantry that spawns tier-5 cakes (`MODS` in `levels.js`).
+They are mild on purpose – the pond's physics stays the tuned v0.6 pond everywhere.
+
+### Save data (localStorage, all keys prefixed `fcf_`)
+`book` – the kinds ever baked (v0.6 stored tier numbers; they migrate to the Blossom Falls menu) · `bakes` – bakes
+per kind · `progress` – stars and best score per level, the last world viewed · `best` – the endless best ·
+`coach` – 0 = tour pending, 1 = the first level ended before the tour did (the rest of it comes with the next
+level), 3 = done. `FCdebug.unlockAll()` / `FCdebug.wipe()` / `FCdebug.level(w, l)` help testing.
 
 ## Design goal for v0.6: tension from the first flick, a pond that stays full and playable
 Playtest verdict on v0.5: "it still isn't fun – at the start it takes very long until I have to pay attention, and
@@ -203,33 +303,35 @@ judged by eye; the consequences of a hit are the player's to read – that is wh
 - **Hot streak:** every flick that makes at least one merge raises the streak. From 2 in a row a badge shows the multiplier, ×1.25 per extra hit up to ×3. A flick that settles without a merge breaks the streak with a little shake.
 
 ## Cakes
-| Tier | Name | Radius* | Points when created |
-| ---: | --- | ---: | ---: |
-| 1 | Macaron | 74 | – |
-| 2 | Cherry Bite | 88 | 2 |
-| 3 | Cupcake | 103 | 6 |
-| 4 | Lemon Tart | 119 | 12 |
-| 5 | Blossom Cake | 136 | 20 |
-| 6 | Choco Cake | 154 | 30 |
-| 7 | Peach Cake | 173 | 42 |
-| 8 | Blueberry Cake | 193 | 56 |
-| 9 | Rainbow Cake | 214 | 72 |
-| 10 | Fairy Torte | 236 | 90 |
-| 11 | Royal Fairycake | 259 | 110 |
-| – | Magic Cake (power-up) | 80 | upgrade of the touched cake |
+The tiers are the sizes (the Blossom Falls menu is given as the example; every world has its own eleven, see the v0.7 notes):
+
+| Tier | Silhouette | Blossom Falls | Radius* | Points when created |
+| ---: | --- | --- | ---: | ---: |
+| 1 | macaron | Lilac Macaron | 74 | – |
+| 2 | small drum (bite) | Cherry Bite | 88 | 2 |
+| 3 | cupcake | Strawberry Cupcake | 103 | 6 |
+| 4 | tart | Lemon Tart | 119 | 12 |
+| 5 | drum | Blossom Cake | 136 | 20 |
+| 6 | drum | Choco Cake | 154 | 30 |
+| 7 | drum | Peach Cake | 173 | 42 |
+| 8 | drum | Blueberry Cake | 193 | 56 |
+| 9 | six-layer cake | Rainbow Cake | 214 | 72 |
+| 10 | winged two-tier torte | Fairy Torte | 236 | 90 |
+| 11 | crowned three-tier royal cake | Royal Fairycake | 259 | 110 |
+| – | the joker | Magic Cake (power-up) | 80 | upgrade of the touched cake |
 
 \*World units; the pond radius is 1000. (v0.5 radii were 69 … 430; see the v0.6 notes for why the ladder is flatter now.)
 
-- **New cakes:** Macaron, Cherry Bite, Cupcake and Lemon Tart, with weights 32/30/24/14. The Blossom Cake (weight 8) joins once a Peach Cake exists. Fewer kinds in the queue means more reachable matches from the single sling.
-- **Fairy Magic:** two Royal Fairycakes vanish in a blast worth 500 points that pushes everything outwards.
+- **New cakes:** tiers 1–4 with weights 32/30/24/14. Tier 5 (weight 8) joins once a tier-7 cake exists; a level's pantry mood can spawn tier 5 from the start. Fewer kinds in the queue means more reachable matches from the single sling. Rare finds take a spawn's place now and then (v0.7 notes).
+- **Fairy Magic:** two royal cakes vanish in a blast worth 500 points that pushes everything outwards.
 
 ## Scoring, combos, stages, worlds
 - **Combo:** merges less than 1.4 s apart chain into a combo. Points are multiplied by 1 + 0.5 × (combo − 1).
 - **Hot streak:** consecutive merging flicks multiply points by 1 + 0.25 × (streak − 1), capped at ×3, on top of the combo.
 - **Stage multiplier:** 1 + 0.15 × (stage − 1), capped at ×2.5, on top of both.
 - **Stages:** see above. Every finished order grants a power-up, alternating between Magic Cake and Wand.
-- **Worlds:** every 3 stages a new world fades in: Blossom Falls → Candy Woods → Moonlight Bay → Rainbow Heights, then the cycle repeats.
-- **Cake Book:** the Cake Book records every cake you have discovered, and the best score is saved locally.
+- **Worlds (endless):** every 3 stages the island fades into the next *unlocked* world (Blossom Falls → Candy Woods → Moonlight Bay → Rainbow Heights → Starfall Realm, then round again), menu included.
+- **Cake Book:** every cake ever baked, in both modes; the endless best and the stars per level are saved locally.
 
 ## Power-ups and bonuses
 - **Magic Cake:** turns your next cake into a rainbow joker that upgrades the first cake it touches.
@@ -339,10 +441,16 @@ Music and sound can be toggled separately in the pause menu. Mix (offline render
   - hit-stop and the neighbour nudge (`mergeBodies` in physics), the streak in `streakMult` / `updatePending`
   - combo window, bubble interval and power-up rewards
   - foam / streak counts (`FOAM_N`, `STREAK_N`), tutorial texts and timing (`updateCoach`)
-- **`js/cakes.js`:** tier radii, names and colours.
+- **`js/levels.js`:** the start cluster of every level (`STARTS`), the star thresholds (`STARS`), the moods and gifts (`MODS`), the world-unlock rule (`UNLOCK_AT`)
+- **`js/cakes.js`:** tier radii (`TIERS`), every cake's look, name and lore (`KINDS`), the menus (`WORLD_MENUS`); `RARE_P` in `game.js` is the rare-find chance
 - **`js/scene.js`:** layout and the arena size on screen.
 
 ## Ideas for the next iteration
+- Playtest the adventure by feel on a phone: are levels 1–3 too quick, are 6–8 too long? Tune `STARTS` (the gap in the ladder
+  decides the length) and `STARS` from that; the bot's LEVEL line (`node tools/bot.js 4 400 1 w.l`) is the yardstick.
+- Side orders on the level card ("bake two Honey Bites", "a 4-chain") as an alternative route to the third star.
+- A bonus level per world after all eight are cleared (a cascade level with a complete ladder as a fireworks finale).
+- A few more rare finds, and one "legendary" rare per world that only spawns there.
 - Playtest v0.6 by feel on a phone: does the populated start read as "a pond of cakes" or as clutter? Is the delivery at the whirl
   a treat or a threat? Tune `targetFill` and `START_N` from that.
 - A third slot in the queue ("after next") for planning chains.

@@ -7,18 +7,25 @@
    The water does the rest: a current races round the rim and carries slow cakes
    round the pond, the calm middle draws them in and turns the pile lazily.
    Stages: every stage is an order of N merges. When it is filled the whirlpool
-   spins up and reshuffles the pile, the multiplier rises and a gift arrives. */
+   spins up and reshuffles the pile, the multiplier rises and a gift arrives.
+   Modes: 'endless' is the classic high-score pond (the island drifts through the worlds
+   you have unlocked); 'level' is one recipe of the adventure – bake the goal cake of a
+   world's menu, with a start cluster, a mood of the water and stars for the score. */
 (function () {
   'use strict';
   const FC = window.FC;
   const TAU = FC.TAU;
   const CFG = FC.Physics.CFG;
   const Body = FC.Physics.Body;
-  const TIERS = FC.Cakes.TIERS;
-  const MAX_T = FC.Cakes.MAX_TIER;
+  const CK = FC.Cakes;
+  const TIERS = CK.TIERS;
+  const MAX_T = CK.MAX_TIER;
+  const spec = CK.spec;
+  const kr = (kind) => TIERS[CK.tierOf(kind)].r; // radius of a kind
   const S = FC.Scene;
   const FX = FC.FX;
   const AU = FC.Audio;
+  const LV = FC.Levels;
 
   const CONE = (80 * Math.PI) / 180; // widest flick, measured from straight ahead
   const DEAD = 9;                    // px a pull needs before it counts
@@ -41,13 +48,18 @@
   const targetFill = (stage) => Math.min(0.5, 0.36 + 0.025 * (stage - 2)); // (a pool holds ~53 % before the cluster touches the ring)
   const DELIVERY_MAX = 9;
   const ringFor = (maxTier) => Math.min(CFG.DANGER, CFG.RING_MIN + CFG.RING_STEP * Math.max(0, maxTier - 3)); // the calm pool widens with every new cake
-  const themeForStage = (n) => Math.floor((n - 1) / 3) % Math.max(1, S.themeCount());
   const easeInOut = (k) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
   const WTMP = { x: 0, y: 0 };
+  const RARE_P = 0.014;              // chance per spawned cake that it is a rare find (of that tier); more in the world it likes
+  const isRare = (kind) => spec(kind).world === 'rare';
 
   const Game = {
     canvas: null, ctx: null, W: 0, H: 0, dpr: 1,
-    state: 'loading', // loading | title | playing | paused | over
+    state: 'loading', // loading | title | playing | paused | over | won
+    mode: 'endless',  // endless | level
+    level: null,      // { w, l, def } while a level is played
+    won: false, wonT: 0, goalBody: null, levelResult: null,
+    endlessWorlds: [0],
     t: 0, last: 0,
     world: null,
     score: 0, best: 0, combo: 0, bestCombo: 0, lastMergeT: -9, maxTier: 1, merges: 0, shots: 0,
@@ -76,7 +88,7 @@
       this.canvas = canvas;
       this.ctx = canvas.getContext('2d');
       this.best = FC.store.get('best', 0);
-      this.discovered = FC.store.get('book', [1]);
+      LV.Collection.load();
       this.world = new FC.Physics.World();
       this.world.onMerge = (a, b) => this.onMerge(a, b);
       this.world.onJoker = (j, c) => this.onJoker(j, c);
@@ -114,6 +126,9 @@
     // ------------------------------------------------------------
     toTitle() {
       this.state = 'title';
+      this.mode = 'endless';
+      this.level = null;
+      this.won = false;
       FX.clear();
       this.bubble = null;
       this.wandMode = false;
@@ -125,8 +140,10 @@
       this.hint = null;
       this.fly = null;
       S.setTheme(0, true);
-      this.queue = [1, 2];
+      CK.setMenu(0);
+      this.queue = [CK.kindFor(1), CK.kindFor(2)];
       this.ring = CFG.DANGER;
+      this.maxTier = 3;
       this.setupStart(false);
       this.setWater(true);
       this.buildFoam();
@@ -134,43 +151,81 @@
       this.setCursor();
     },
 
+    // which world the pond is in right now (the menu, the backdrop)
+    worldIndex() {
+      return this.level ? this.level.w : S.theme;
+    },
+
+    // the classic endless pond: the island drifts through the worlds you have unlocked, every third stage
     newGame() {
+      this.mode = 'endless';
+      this.level = null;
+      this.endlessWorlds = [];
+      for (let w = 0; w < LV.WORLDS.length; w++) if (LV.Progress.worldUnlocked(w)) this.endlessWorlds.push(w);
+      if (!this.endlessWorlds.length) this.endlessWorlds = [0];
+      this.beginRun({ theme: 0, tutorialOk: true });
+    },
+
+    // one recipe of the adventure
+    startLevel(w, l) {
+      const def = LV.level(w, l);
+      this.mode = 'level';
+      this.level = { w, l, def };
+      LV.Progress.setLastWorld(w);
+      this.beginRun({ theme: def.world.theme, tutorialOk: w === 0 && l === 0, start: def.start, water: def.water, gifts: def.gifts, goal: def.goal });
+    },
+
+    beginRun(o) {
       FX.clear();
+      this.won = false; this.wonT = 0; this.goalBody = null; this.levelResult = null;
       this.score = 0; this.combo = 0; this.bestCombo = 0; this.lastMergeT = -9;
       this.stage = 1; this.stageGoal = stageGoal(1); this.stageMerges = 0; this.stageDone = false; this.whirl = null;
-      this.ring = ringFor(3);
       this.world.inflowK = 1; this.world.free = false; this.world.shear = 0; this.world.twinK = 1; this.world.twinAlways = false;
-      this.maxTier = 3; this.merges = 0; this.shots = 0; this.shotSeq = 0; this.runNew = [];
-      this.jokers = 0; this.wands = 0; this.wandMode = false;
+      this.merges = 0; this.shots = 0; this.shotSeq = 0; this.runNew = []; this.runRares = []; this.maxKind = null; this.maxKindTier = 0;
+      this.jokers = (o.gifts && o.gifts.jokers) || 0; this.wands = (o.gifts && o.gifts.wands) || 0; this.wandMode = false;
       this.bubble = null; this.nextBubbleAt = 14 + FC.randInt(0, 6);
       this.danger = 0; this.dangerBody = null; this.warnT = 0; this.dangerHinted = false;
       this.cool = 0; this.launcher.pop = 0; this.fly = null;
       this.overT = 0;
       this.cancelAim();
-      this.idle = 0; this.handT = -1; this.hint = null; this.ringPulse = 0; this.rideTip = false;
+      this.idle = 0; this.handT = -1; this.hint = null; this.ringPulse = 0; this.rideTip = false; this.rareTipFor = null;
       this.hitstop = 0; this.streak = 0; this.pending = [];
+      this.waterMod = o.water || { rim: 1, turn: 1 };
       this.state = 'playing';
-      if (S.theme !== 0) S.setTheme(0, false);
-      const tutorial = FC.store.get('coach', 0) < COACH_DONE;
-      const first = this.setupStart(tutorial); // the first cake always has a match on the front face of the start cluster
-      this.queue = tutorial ? [1, 2, 1] : [first, this.randTier()];
+      const theme = o.theme || 0;
+      if (S.theme !== theme) { if (S.ready(theme)) S.setTheme(theme, false); else S.load(theme).then(() => { if (this.state === 'playing' && this.worldIndex() === theme) S.setTheme(theme, false); }); }
+      CK.setMenu(theme);
+      const coachState = FC.store.get('coach', 0);
+      const tutorial = o.tutorialOk && coachState === 0;       // the guided first game
+      const tourRest = o.tutorialOk && coachState === 1;       // the first level ended before the tour did: the rest of it comes now
+      const tiers = tutorial ? [3, 2, 1, 2, 3, 1, 4, 2, 1, 5] : (o.start || [3, 2, 1, 2, 3, 1, 4, 2, 3, 4, 1].slice(0, START_N));
+      this.maxTier = Math.max(3, ...tiers);
+      // in a level the calm pool is as wide as the goal cake will need from the start – the big cakes are there already
+      this.ringTier = o.goal ? Math.max(this.maxTier, o.goal) : this.maxTier;
+      this.ring = ringFor(this.ringTier);
+      const first = this.setupStart(tutorial, tiers); // the first cake always has a match on the front face of the start cluster
+      this.queue = tutorial ? [CK.kindFor(1), CK.kindFor(2), CK.kindFor(1)] : [CK.kindFor(first), this.randKind()];
       FC.UI.onNewGame();
-      this.coach = tutorial ? { step: 'aim', t: 0, shown: '' } : null;
-      if (this.coach) this.coachSay('aim', 'Pull the cake back & let go!', 'Like a slingshot');
+      this.coach = tutorial ? { step: 'aim', t: 0, shown: '' } : tourRest ? { step: 'merged', t: 1.4, shown: '' } : null;
+      if (tutorial) this.coachSay('aim', 'Pull the cake back & let go!', 'Like a slingshot');
       this.setWater(true);
       this.buildFoam();
       this.setCursor();
+      // the start cluster counts for the book too (the big cakes of a level are "baked" by the castle, not by you –
+      // they are shown, but only your own bakes fill the book)
+      if (this.level) FC.UI.setGoal();
+      if (this.level && this.level.def.mod) FC.UI.banner(this.level.def.mod.name, this.level.def.mod.text);
     },
 
-    // A populated pond: a run starts with a cluster of START_N cakes (tiers 1-4) that the water has packed
-    // together, so the first flick already has targets, chains and a little tension (the cluster fills ~40 %
-    // of the calm pool). No two twins touch (they would merge by themselves), and the cake the sling gets first
-    // always has a match on the front face. Returns the tier for the first cake in the sling.
-    setupStart(tutorial) {
+    // A populated pond: a run starts with a cluster of cakes that the water has packed together, so the first
+    // flick already has targets, chains and a little tension (the cluster fills ~40 % of the calm pool). No two
+    // twins touch (they would merge by themselves), and the cake the sling gets first always has a match on the
+    // front face. Returns the tier for the first cake in the sling.
+    setupStart(tutorial, list) {
       const W = this.world;
-      // the tutorial cluster is calmer: one pair of each tier, and no Cherry Bite next to the Macaron in front,
-      // so the coached first flick makes one merge (not a four-chain) – chains come with the next flicks
-      const tiers = tutorial ? [1, 1, 2, 2, 3, 3, 4, 4, 5] : [3, 2, 1, 2, 3, 1, 4, 2, 3, 4, 1].slice(0, START_N);
+      // the tutorial cluster is calmer: no Cherry Bite next to the Macaron in front, so the coached first flick
+      // makes one merge (not a four-chain) – chains come with the next flicks
+      const tiers = (list || (tutorial ? [3, 2, 1, 2, 3, 1, 4, 2, 1, 5] : [3, 2, 1, 2, 3, 1, 4, 2, 3, 4, 1])).slice();
       const settle = (steps) => {
         const onI = W.onImpact, onR = W.onRim, om = W.omegaCore;
         W.onImpact = W.onRim = null;
@@ -182,41 +237,96 @@
         for (const b of W.bodies) { b.vx = 0; b.vy = 0; }
       };
       // identical cakes must not start next to each other (they would merge by themselves)
+      const tooClose = (a, b) => a.tier === b.tier && Math.hypot(a.x - b.x, a.y - b.y) - a.r - b.r < CFG.TWIN_RANGE * Math.min(a.r, b.r) + 70;
       const apart = () => {
         const B = W.bodies;
-        for (let i = 0; i < B.length; i++) {
-          for (let j = i + 1; j < B.length; j++) {
-            if (B[i].tier !== B[j].tier) continue;
-            const gap = Math.hypot(B[i].x - B[j].x, B[i].y - B[j].y) - B[i].r - B[j].r;
-            if (gap < CFG.TWIN_RANGE * Math.min(B[i].r, B[j].r) + 70) return false;
-          }
-        }
+        for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) if (tooClose(B[i], B[j])) return false;
         return true;
       };
-      // a seed in the middle, a ring of six round it, the rest in a second ring; the water packs them into a cluster
+      // the water packed two twins together while settling: swap one of them with a small cake of another tier
+      // that fits there (the small ones are all about the same size, so the cluster keeps its shape)
+      const retier = (b, t) => { b.tier = t; b.r = b.rT = TIERS[t].r; b.setMass(b.r); b.kind = CK.kindFor(t); };
+      const repair = () => {
+        const B = W.bodies;
+        for (let n = 0; n < 24; n++) {
+          let bad = null;
+          for (let i = 0; i < B.length && !bad; i++) for (let j = i + 1; j < B.length; j++) if (tooClose(B[i], B[j])) { bad = B[i]; break; }
+          if (!bad) return true;
+          let done = false;
+          for (const o of B) {
+            if (o === bad || o.tier === bad.tier || o.tier > 4 || bad.tier > 4) continue;
+            const ta = bad.tier, tb = o.tier;
+            retier(bad, tb); retier(o, ta);
+            if (B.every((p) => p === bad || !tooClose(bad, p)) && B.every((p) => p === o || !tooClose(o, p))) { done = true; break; }
+            retier(bad, ta); retier(o, tb);
+          }
+          if (!done) return false;
+        }
+        return apart();
+      };
       const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = arr[i]; arr[i] = arr[j]; arr[j] = t; } return arr; };
-      const build = () => {
-        W.clear();
-        // the tutorial turns the layout so that one outer spot sits right in front of the sling (a Macaron goes there)
+      // the ring layout (small clusters): a seed in the middle, a ring of six round it, the rest in a second ring,
+      // turned so that one outer spot sits right in front of the sling (the tutorial puts a Macaron there). The tiers
+      // are assigned to the spots by a small backtracking search: no twins on neighbouring spots
+      const ringLayout = () => {
         const rot = tutorial ? Math.PI / 2 - Math.PI / 8 : Math.random() * TAU;
         const pos = [[0, 0]];
         for (let k = 0; k < 6 && pos.length < tiers.length; k++) { const a = rot + (k / 6) * TAU; pos.push([Math.cos(a) * 215, Math.sin(a) * 215]); }
         for (let k = 0; pos.length < tiers.length; k++) { const a = rot + ((k + 0.5) / 8) * TAU; pos.push([Math.cos(a) * 410, Math.sin(a) * 410]); }
-        // greedy colouring: fill the spots in random order, each with a tier none of its neighbours has yet
-        const near = pos.map((p) => pos.map((q, j) => (Math.hypot(p[0] - q[0], p[1] - q[1]) < 330 ? j : -1)).filter((j) => j >= 0));
-        const pool = shuffle(tiers.slice());
+        const near = pos.map((p) => pos.map((q, j) => (Math.hypot(p[0] - q[0], p[1] - q[1]) < 330 ? j : -1)).filter((j) => j >= 0 && j !== pos.indexOf(p)));
+        const counts = {};
+        for (const x of tiers) counts[x] = (counts[x] || 0) + 1;
+        const kinds = shuffle(Object.keys(counts).map(Number));
         const t = new Array(pos.length).fill(0);
-        const order = shuffle(pos.map((_, k) => k));
-        if (tutorial) { order.splice(order.indexOf(7), 1); order.unshift(7); pool.splice(pool.indexOf(1), 1); pool.unshift(1); }
-        for (const i of order) {
-          const used = near[i].map((j) => t[j]);
-          if (tutorial && near[7].indexOf(i) >= 0) used.push(2);
-          let k = pool.findIndex((x) => used.indexOf(x) < 0);
-          if (k < 0) k = 0;
-          t[i] = pool.splice(k, 1)[0];
+        const order = pos.map((_, i) => i).sort((a, b) => near[b].length - near[a].length);
+        if (tutorial && pos.length > 7) { t[7] = 1; counts[1]--; order.splice(order.indexOf(7), 1); }
+        const rec = (k) => {
+          if (k === order.length) return true;
+          const i = order[k];
+          for (const tier of shuffle(kinds.slice())) {
+            if (counts[tier] <= 0) continue;
+            if (near[i].some((j) => t[j] === tier)) continue;
+            if (tutorial && tier === 2 && near[7] && near[7].indexOf(i) >= 0) continue; // no Cherry Bite next to the coached Macaron
+            t[i] = tier; counts[tier]--;
+            if (rec(k + 1)) return true;
+            t[i] = 0; counts[tier]++;
+          }
+          return false;
+        };
+        if (!rec(0)) return null;
+        return pos.map(([x, y], i) => ({ t: t[i], x, y }));
+      };
+      // the level layout: the big cakes go in the middle, the small ones are packed round them (closest free
+      // spot first, never next to a twin), in a random orientation
+      const packLayout = () => {
+        const rot = Math.random() * TAU;
+        const big = tiers.filter((t) => t >= 5).sort((a, b) => b - a);
+        const small = shuffle(tiers.filter((t) => t < 5));
+        const placed = [];
+        for (const t of big.concat(small)) {
+          const r = TIERS[t].r;
+          let spot = null;
+          for (let d = 0; d < 1500 && !spot; d += 10) {
+            for (let k = 0; k < 36; k++) {
+              const a = rot + (k / 36) * TAU + d * 0.013;
+              const x = Math.cos(a) * d, y = Math.sin(a) * d;
+              let ok = true;
+              for (const p of placed) {
+                const dd = Math.hypot(p.x - x, p.y - y);
+                if (dd < p.r + r + 6 || (p.t === t && dd < p.r + r + CFG.TWIN_RANGE * Math.min(p.r, r) + 90)) { ok = false; break; }
+              }
+              if (ok) { spot = { x, y }; break; }
+            }
+          }
+          placed.push({ t, r, x: spot ? spot.x : 0, y: spot ? spot.y : 0 });
         }
-        pos.forEach(([x, y], i) => {
-          const b = new Body(t[i], TIERS[t[i]].r, x, y);
+        return placed;
+      };
+      const build = () => {
+        W.clear();
+        const items = (tutorial || !tiers.some((t) => t >= 5) ? ringLayout() : null) || packLayout(); // small clusters use the ring layout
+        items.forEach((it, i) => {
+          const b = new Body(it.t, TIERS[it.t].r, it.x, it.y);
           b.age = 3;
           b.pop = -0.1 - i * 0.06; // staggered pop-in
           W.add(b);
@@ -230,9 +340,11 @@
         return pr.hit && !pr.hit.body.sensor ? pr.hit.body : null;
       };
       let fails = 0;
+      const stats = (this.startStats = { tries: 0, twins: 0, front: 0, hit: 0 });
       for (let tries = 0; tries < 80; tries++) {
+        stats.tries++;
         build();
-        if (!apart()) continue;
+        if (!apart() && !repair()) { stats.twins++; continue; }
         if (tutorial) {
           // the straight flick the coach asks for must hit a Macaron
           const hit = probe(0);
@@ -248,9 +360,11 @@
         }
         const front = [];
         for (let deg = -50; deg <= 50; deg += 10) { const h = probe(deg); if (h && front.indexOf(h) < 0) front.push(h); }
-        if (front.length < 2) continue;
+        if (front.length < 2) { stats.front++; continue; }
+        // the first cake in the sling is small (a big start cake in front must not become the first flick)
         const small = front.filter((b) => b.tier <= 3);
-        return FC.pick(small.length ? small : front).tier;
+        if (!small.length) { stats.front++; continue; }
+        return FC.pick(small).tier;
       }
       // the fallback (practically never): the old fixed cross, one cake in the middle, twins opposite each other
       W.clear();
@@ -263,15 +377,32 @@
       return 1;
     },
 
-    // new cakes: Macaron, Cherry Bite, Cupcake and (rarely) Lemon Tart – the Blossom Cake joins once a Peach Cake exists
+    // new cakes: Macaron, Cherry Bite, Cupcake and (rarely) Lemon Tart – the tier-5 cake joins once a tier-7 cake
+    // exists (a level's pantry can say otherwise). Now and then a rare find takes the place of the usual cake
     randTier() {
-      const maxT = FC.clamp(this.maxTier - 3, 4, 5);
-      const w = [32, 30, 24, 14, 8];
+      const lv = this.level && this.level.def;
+      const w = (lv && lv.queue) || [32, 30, 24, 14, 8];
+      // in a level the start cakes do not count: tier 5 joins once *you* have baked a tier-7 cake
+      const top = this.level ? Math.max(3, this.maxKindTier || 0) : this.maxTier;
+      const maxT = lv && lv.queue ? w.length : FC.clamp(top - 3, 4, 5);
       let sum = 0;
       for (let i = 0; i < maxT; i++) sum += w[i];
       let x = Math.random() * sum;
       for (let i = 0; i < maxT; i++) { x -= w[i]; if (x <= 0) return i + 1; }
       return 1;
+    },
+    randKind() {
+      const tier = this.randTier();
+      if (this.state === 'playing' && this.shots >= 3 && !this.coach) {
+        const here = this.worldIndex();
+        for (const id of CK.RARES) {
+          const s = spec(id);
+          if (s.tier !== tier) continue;
+          const p = RARE_P * (s.chance || 1) * (s.boost === here ? 2.5 : 1);
+          if (Math.random() < p) return id;
+        }
+      }
+      return CK.kindFor(tier);
     },
 
     // ------------------------------------------------------------
@@ -302,7 +433,7 @@
       if (this.state !== 'playing') return;
       if (e.button === 2) { this.cancelAim(); return; }
       if (this.wandMode) { this.wandTap(e.clientX, e.clientY); return; }
-      if (this.aim.active || this.water.active || this.whirl || this.stageDone) return;
+      if (this.aim.active || this.water.active || this.whirl || this.stageDone || this.won) return;
       if (this.queue[0] == null) return;
       this.idle = 0;
       this.handT = -1;
@@ -317,7 +448,7 @@
     isSlingPress(x, y) {
       if (!this.inPond(x, y)) return true;
       const g = this.slingGround();
-      const rr = TIERS[this.queue[0]].r * S.s;
+      const rr = kr(this.queue[0]) * S.s;
       const reach = Math.max(rr * 2.4, 46);
       return Math.hypot(x - g.x, y - (g.y - rr * 0.45)) < reach;
     },
@@ -409,8 +540,10 @@
     // ------------------------------------------------------------
     // aiming
     // ------------------------------------------------------------
-    anchorW(tier) {
-      return { x: 0, y: CFG.R - TIERS[tier].r - 4 };
+    // where a cake sits in the sling (world units); k = a tier or a kind
+    anchorW(k) {
+      const r = typeof k === 'number' ? TIERS[k].r : kr(k);
+      return { x: 0, y: CFG.R - r - 4 };
     },
     slingGround() {
       const a = this.anchorW(this.queue[0] == null ? 1 : this.queue[0]);
@@ -431,10 +564,11 @@
 
     computeAim() {
       const a = this.aim;
-      const tier = this.queue[0];
+      const kind = this.queue[0];
       a.valid = false;
       a.offX = a.offY = 0;
-      if (tier == null) return;
+      if (kind == null) return;
+      const tier = CK.tierOf(kind);
       const r = TIERS[tier].r;
       const L = this.anchorW(tier);
       const dx = a.cx - a.sx, dy = a.cy - a.sy;
@@ -484,10 +618,11 @@
     },
 
     fire(dir, speed, power, L) {
-      const tier = this.queue.shift();
-      this.queue.push(this.randTier());
+      const kind = this.queue.shift();
+      this.queue.push(this.randKind());
+      const tier = CK.tierOf(kind);
       const r = TIERS[tier].r;
-      const b = new Body(tier, r, L.x, L.y);
+      const b = new Body(tier, r, L.x, L.y, kind);
       b.vx = dir.x * speed;
       b.vy = dir.y * speed;
       b.launched = true;
@@ -512,24 +647,36 @@
       AU.launch(power);
       this.maybeBubble();
       FC.UI.updateNext(true);
+      this.rareCheck();
       const c = this.coach;
       if (c && (c.step === 'aim' || c.step === 'retry')) { c.step = 'fly'; c.t = 0; c.shown = ''; FC.UI.coachHide(); }
     },
 
+    // a rare find has arrived in the sling: say so once
+    rareCheck() {
+      const k = this.queue[0];
+      if (!k || !isRare(k) || this.rareTipFor === k || this.coach) return;
+      this.rareTipFor = k;
+      const s = spec(k);
+      FC.UI.coach('A rare find! ' + s.name, LV.Collection.has(k) ? 'Merge it for bonus points' : 'Merge it to add it to your Cake Book', { time: 3200 });
+      AU.discover();
+    },
+
     swap() {
-      if (this.state !== 'playing' || this.aim.active || this.queue.length < 2) return;
+      if (this.state !== 'playing' || this.aim.active || this.queue.length < 2 || this.won) return;
       const q = this.queue;
       const t = q[0]; q[0] = q[1]; q[1] = t;
       this.fly = null;
       this.launcher.pop = 0.35;
       AU.swap();
       FC.UI.updateNext(true);
+      this.rareCheck();
     },
 
     useJoker() {
-      if (this.state !== 'playing' || this.jokers <= 0 || this.queue[0] === 0) return;
+      if (this.state !== 'playing' || this.jokers <= 0 || this.queue[0] === 'magic' || this.won) return;
       this.jokers--;
-      this.queue.unshift(0);
+      this.queue.unshift('magic');
       this.fly = null;
       this.launcher.pop = 0;
       AU.magic();
@@ -539,7 +686,7 @@
     },
 
     toggleWand() {
-      if (this.state !== 'playing') return;
+      if (this.state !== 'playing' || this.won) return;
       if (this.wandMode) { this.wandMode = false; FC.UI.updatePowers(); FC.UI.coachHide(); this.setCursor(); return; }
       if (this.wands <= 0) return;
       this.cancelAim();
@@ -557,7 +704,7 @@
       if (!hit) { FC.UI.updatePowers(); return; }
       hit.dead = true;
       this.wands--;
-      const T = TIERS[hit.tier];
+      const T = spec(hit.kind);
       FX.burst(hit.x, hit.y, { n: 30, colors: ['#ffffff', '#fff3a8', '#e8d4ff'].concat(T.particle), speed: [250, 900], size: [10, 24], kinds: ['star', 'dot', 'heart'], life: [0.5, 1.1], gravity: -200 });
       FX.ring(hit.x, hit.y, hit.r * 0.6, hit.r * 1.8, '#ffffff', 0.45, 18);
       FX.popup(hit.x, hit.y - hit.r, 'Poof!', '#a77ad6', 40);
@@ -644,7 +791,8 @@
       // a tiny freeze sells the pop
       this.hitstop = Math.min(0.1, this.hitstop + 0.035 + nt * 0.003); // lighter than v0.5: chains are common now and must keep flowing
       if (navigator.vibrate) try { navigator.vibrate(nt >= 6 ? 22 : 10); } catch (e) { /* ignore */ }
-      this.reach(nt);
+      for (const o of [a, b]) if (isRare(o.kind)) this.rareFound(o, nb);
+      this.reach(nt, nb);
       this.cheer(nt >= 5 || combo >= 3 ? 1.2 : 0.6);
       this.bakeProgress();
       const c = this.coach;
@@ -665,7 +813,7 @@
       j.dead = true;
       const combo = this.bumpCombo();
       const mult = 1 + 0.5 * (combo - 1);
-      FX.burst(j.x, j.y, { n: 30, colors: TIERS[0].particle, speed: [250, 900], size: [10, 22], kinds: ['star', 'dot', 'heart'], life: [0.6, 1.2], gravity: -100 });
+      FX.burst(j.x, j.y, { n: 30, colors: spec('magic').particle, speed: [250, 900], size: [10, 22], kinds: ['star', 'dot', 'heart'], life: [0.6, 1.2], gravity: -100 });
       AU.magic();
       if (c.tier >= MAX_T) {
         c.dead = true;
@@ -689,9 +837,22 @@
       this.addScore(pts);
       this.mergeFX(nb, nt, combo, pts, 'Magic!');
       this.hitstop = Math.min(0.13, this.hitstop + 0.06);
-      this.reach(nt);
+      if (isRare(c.kind)) this.rareFound(c, nb);
+      this.reach(nt, nb);
       this.cheer(1);
       this.bakeProgress();
+    },
+
+    // a rare find was merged: bonus points, and the Cake Book gets it (first time: a discovery)
+    rareFound(o, nb) {
+      const s = spec(o.kind);
+      const pts = Math.round(40 * s.tier * this.stageMult());
+      this.addScore(pts);
+      FX.popup(nb.x, nb.y - nb.rT * 3.4, 'Rare! +' + pts, '#e2a800', 34, { life: 1.6 });
+      FX.burst(nb.x, nb.y, { n: 26, colors: ['#ffe27a', '#ffffff', '#fff3a8', '#ffd34d'], speed: [250, 800], size: [9, 18], kinds: ['star', 'dot'], life: [0.6, 1.2], gravity: -120 });
+      this.flash = Math.max(this.flash, 0.3); this.flashCol = '#fff6d8';
+      if (this.runRares) this.runRares.push(o.kind);
+      this.discover(o.kind, true);
     },
 
     onBubble(s, b) {
@@ -700,7 +861,9 @@
       this.bubble = null;
       const roll = Math.random();
       let label, kind = null;
-      if (roll < 0.36) { this.jokers++; label = '+1 Magic Cake'; kind = 'joker'; }
+      // in a level the bubble holds a Magic Cake only once in six (it is the shortcut to the goal)
+      const pMagic = this.mode === 'level' ? 0.16 : 0.36;
+      if (roll < pMagic) { this.jokers++; label = '+1 Magic Cake'; kind = 'joker'; }
       else if (roll < 0.72) { this.wands++; label = '+1 Wand'; kind = 'wand'; }
       else { this.addScore(60); label = '+60 Bonus'; }
       FX.burst(s.x, s.y, { n: 34, colors: ['#ffffff', '#d6f6ff', '#ffd6f0', '#fff3a8'], speed: [250, 800], size: [9, 20], kinds: ['star', 'dot'], life: [0.5, 1.0], gravity: -150 });
@@ -755,7 +918,7 @@
     },
 
     mergeFX(nb, nt, combo, pts, label, quiet) {
-      const T = TIERS[nt];
+      const T = spec(nb.kind);
       const big = nt >= 6 && !quiet;
       FX.burst(nb.x, nb.y - nb.rT * 0.2, {
         n: Math.min(30, 10 + nt * 2 + combo * 2), colors: T.particle.concat(['#ffffff']),
@@ -772,7 +935,7 @@
       const pts = Math.round(500 * (1 + 0.5 * (combo - 1)) * this.stageMult());
       this.addScore(pts);
       this.merges++;
-      FX.burst(x, y, { n: 60, colors: TIERS[MAX_T].particle.concat(['#ff9fd0', '#9ec5ff', '#a7ebc8']), speed: [400, 1600], size: [12, 30], kinds: ['star', 'heart', 'sprinkle', 'dot'], life: [0.8, 1.8], gravity: 300, up: 300 });
+      FX.burst(x, y, { n: 60, colors: spec(CK.kindFor(MAX_T)).particle.concat(['#ff9fd0', '#9ec5ff', '#a7ebc8']), speed: [400, 1600], size: [12, 30], kinds: ['star', 'heart', 'sprinkle', 'dot'], life: [0.8, 1.8], gravity: 300, up: 300 });
       FX.ring(x, y, 100, 900, '#fff3a8', 0.8, 30);
       FX.ring(x, y, 60, 700, '#ffffff', 0.6, 20);
       FX.popup(x, y - 300, 'Fairy Magic! +' + pts, '#ff6fa8', 64, { life: 2.0 });
@@ -784,13 +947,14 @@
       this.shake = 12;
       this.flash = 0.6; this.flashCol = '#fff6d8';
       AU.royal();
-      FC.UI.banner('Fairy Magic!', 'Two Royal Fairycakes vanished in sparkles');
+      FC.UI.banner('Fairy Magic!', 'Two ' + spec(CK.kindFor(MAX_T)).name + 's vanished in sparkles');
       this.cheer(2);
       this.bakeProgress();
     },
 
-    // a new tier was created in this run
-    reach(nt) {
+    // a new cake was baked in this run (nb = the new body)
+    reach(nt, nb) {
+      if (nb && nt >= (this.maxKindTier || 0)) { this.maxKind = nb.kind; this.maxKindTier = nt; }
       if (nt > this.maxTier) {
         this.maxTier = nt;
         // a bigger cake needs more room: the calm pool widens
@@ -799,18 +963,74 @@
           FX.popup(0, -this.ring * 0.55, 'The pool widens!', '#7bdbe8', 30, { life: 1.6 });
         }
       }
-      this.discover(nt);
+      const goal = this.level && !this.won && nt >= this.level.def.goal;
+      this.discover(nb ? nb.kind : CK.kindFor(nt), false, goal);
+      if (this.level) FC.UI.setGoal();
+      if (goal) this.levelClear(nb);
     },
 
-    discover(nt) {
-      if (this.discovered.indexOf(nt) >= 0) return;
-      this.discovered.push(nt);
-      FC.store.set('book', this.discovered);
-      if (nt >= 2) {
-        if (this.runNew) this.runNew.push(nt); // a first-time find: the Cake Book pill shows "New!"
-        FC.UI.discover(nt);
-        FC.UI.markNewCake(nt);
-        AU.discover();
+    // the Cake Book: every kind you bake yourself (quiet = no toast; the level-clear card shows the goal cake instead)
+    discover(kind, rare, quiet) {
+      if (!kind || kind === 'magic') return;
+      const fresh = LV.Collection.add(kind);
+      if (!fresh) return;
+      if (this.runNew) this.runNew.push(kind); // a first-time find: the Cake Book pill shows "New!"
+      FC.UI.markNewCake(kind);
+      if (!quiet) { FC.UI.discover(kind, rare); AU.discover(); }
+    },
+
+    // ------------------------------------------------------------
+    // level clear: the goal cake is baked – fireworks, then the result card
+    // ------------------------------------------------------------
+    levelClear(nb) {
+      this.won = true;
+      this.wonT = 0;
+      this.goalBody = nb;
+      this.cancelAim();
+      this.wandMode = false;
+      this.handT = -1;
+      this.hint = null;
+      this.pending = [];
+      this.danger = 0; this.dangerBody = null;
+      FC.UI.setDanger(false);
+      FC.UI.coachHide();
+      FC.UI.updatePowers();
+      // (the stars are recorded when the card appears: the chain that bakes the goal may still be running)
+      // the tour was cut short by the win: the rest of it comes with the next level
+      if (this.coach) { FC.store.set('coach', ['aim', 'retry', 'fly', 'merged', 'goal'].indexOf(this.coach.step) >= 0 ? 1 : COACH_DONE); this.coach = null; }
+      AU.royal();
+      this.shake = Math.max(this.shake, 7);
+      this.flash = 0.5; this.flashCol = '#fff6d8';
+      this.cheer(99);
+      for (const b of this.world.bodies) { if (!b.sensor) { b.expr = 'happy'; b.exprT = 99; } b.danger = 0; }
+      FC.UI.banner('Level clear!', 'You baked the ' + spec(nb.kind).name + '!');
+      FC.UI.setGoal();
+      this.setCursor();
+    },
+
+    updateWon(dt) {
+      this.wonT += dt;
+      const nb = this.goalBody;
+      const W = this.world;
+      for (const b of W.bodies) b.danger = 0;
+      // fireworks around the new cake, and a lap of honour for everybody
+      if (nb && !nb.dead && Math.random() < dt * 9) {
+        const a = Math.random() * TAU, rr = nb.rT * (1.2 + Math.random() * 1.6);
+        FX.burst(nb.x + Math.cos(a) * rr, nb.y + Math.sin(a) * rr * 0.6, { n: 14, colors: spec(nb.kind).particle.concat(['#ffffff', '#fff3a8']), speed: [200, 700], size: [9, 20], kinds: ['star', 'heart', 'sprinkle'], life: [0.6, 1.2], gravity: 450, up: 250 });
+      }
+      if (Math.random() < dt * 6) {
+        const a = Math.random() * TAU, rr = 300 + Math.random() * 600;
+        FX.burst(Math.cos(a) * rr, Math.sin(a) * rr, { n: 8, colors: ['#ffffff', '#fff3a8', '#ffd6ea', '#d6f6ff'], speed: [120, 420], size: [7, 14], kinds: ['star', 'dot'], life: [0.5, 1.0], gravity: -60 });
+      }
+      if (this.wonT > 2.6 && this.state === 'playing') {
+        this.state = 'won';
+        this.levelResult = LV.Progress.record(this.level.w, this.level.l, this.score);
+        this.levelResult.score = this.score;
+        // a whirl that was running ends here (the pond keeps floating behind the card, calmly)
+        this.whirl = null;
+        W.inflowK = 1; W.free = false; W.shear = 0; W.twinK = 1; W.twinAlways = false; W.spin = 0;
+        FC.UI.showLevelClear(this.level, this.levelResult, nb ? nb.kind : this.level.def.kind);
+        this.setCursor();
       }
     },
 
@@ -842,9 +1062,15 @@
       }
     },
 
+    // endless mode: the island drifts into the next unlocked world every third stage (and its menu comes along)
+    themeForStage(n) {
+      const list = this.endlessWorlds || [0];
+      return LV.WORLDS[list[Math.floor((n - 1) / 3) % list.length]].theme;
+    },
+
     // the whirl waits for the chain reaction to finish, then spins the pond up
     updateStageDone(dt) {
-      if (!this.stageDone || this.whirl) return;
+      if (!this.stageDone || this.whirl || this.won) return;
       this.stageDoneT += dt;
       let busy = this.pending.length > 0;
       for (const b of this.world.bodies) if (!b.dead && !b.sensor && b.speed() > 260) { busy = true; break; }
@@ -919,18 +1145,24 @@
         w.shown = true;
         const n = this.stage;
         let gift, kind;
-        if (n % 2 === 0) { this.jokers++; gift = '+1 Magic Cake'; kind = 'joker'; } else { this.wands++; gift = '+1 Wand'; kind = 'wand'; }
+        // endless: Magic Cake and Wand alternate. In a level the Magic Cake is the late finisher (the fifth
+        // order, then every third) – handed out at the first order it would upgrade the biggest cake straight
+        // to the goal and skip the climb
+        const magic = this.mode === 'level' ? n >= 5 && n % 3 === 2 : n % 2 === 0;
+        if (magic) { this.jokers++; gift = '+1 Magic Cake'; kind = 'joker'; } else { this.wands++; gift = '+1 Wand'; kind = 'wand'; }
         FC.UI.updatePowers(true);
-        const nextTheme = themeForStage(n);
+        const nextTheme = this.mode === 'endless' ? this.themeForStage(n) : S.theme;
         const fresh = w.batch > 0 ? ' · ' + w.batch + ' fresh cakes' : '';
         if (nextTheme !== S.theme) {
           S.load(nextTheme).then(() => {
+            if (this.state !== 'playing' || this.mode !== 'endless') return;
             S.setTheme(nextTheme, false);
+            CK.setMenu(nextTheme); // new world, new menu: the cakes from here on wear the new world's flavours
             FC.UI.banner('Welcome to ' + S.themeName(nextTheme) + '!', 'Stage ' + n + fresh + ' · ' + gift);
+            FC.UI.updateNext();
           });
         } else FC.UI.banner('Stage ' + n + '!', 'Order: ' + this.stageGoal + ' merges' + fresh + ' · ' + gift);
-        const upcoming = themeForStage(n + 1);
-        if (upcoming !== S.theme) S.load(upcoming);
+        if (this.mode === 'endless') { const upcoming = this.themeForStage(n + 1); if (upcoming !== S.theme) S.load(upcoming); }
         AU.levelUp();
         this.powerIntro(kind);
       }
@@ -1060,7 +1292,7 @@
         case 'aim':
         case 'retry':
           if (a.active && a.valid) {
-            if (this.predMatch(a.pred, this.queue[0])) this.coachSay('match', 'That’s a match! {heart}', 'Let go to merge them');
+            if (this.predMatch(a.pred, CK.tierOf(this.queue[0]))) this.coachSay('match', 'That’s a match! {heart}', 'Let go to merge them');
             else this.coachSay('aiming', 'Aim at the same cake', 'A {heart} means: match!');
           } else if (!a.active) {
             if (c.step === 'aim') this.coachSay('aim', 'Pull the cake back & let go!', 'Like a slingshot');
@@ -1073,7 +1305,7 @@
         case 'merged':
           if (c.t > 2.6) {
             c.step = 'goal'; c.t = 0;
-            this.coachSay('goal', 'Bake bigger and bigger cakes', 'All the way up to the Royal Fairycake!', { chain: true });
+            this.coachSay('goal', 'Bake bigger and bigger cakes', 'All the way up to the ' + spec(CK.kindFor(MAX_T)).name + '!', { chain: true });
             FC.UI.pulseBook();
           }
           break;
@@ -1129,7 +1361,7 @@
       this.shake = 10;
       this.flash = 0.45; this.flashCol = '#ffd2e4';
       this.tilly.mood = 'sad'; this.tilly.moodT = 99;
-      this.newBest = this.score > this.best;
+      this.newBest = this.mode === 'endless' && this.score > this.best;
       if (this.newBest) { this.best = this.score; FC.store.set('best', this.best); }
       for (const b of this.world.bodies) { b.expr = 'sad'; b.exprT = 99; }
       FC.UI.onGameOver();
@@ -1147,7 +1379,7 @@
           const b = list[0];
           b.dead = true;
           if (!b.sensor) {
-            const T = TIERS[b.tier] || TIERS[1];
+            const T = spec(b.kind);
             FX.burst(b.x, b.y, { n: 14, colors: T.particle, speed: [200, 600], size: [8, 16], kinds: ['sprinkle', 'dot', 'star'], life: [0.5, 1.0], gravity: 700, up: 150 });
             AU.tone(300 + Math.random() * 200, 0.08, { type: 'triangle', vol: 0.06 });
           }
@@ -1156,7 +1388,7 @@
       }
       if (this.overT > 1.0 && !this.overShown && (this.world.count() === 0 || this.overT > 3.2)) {
         this.overShown = true;
-        FC.UI.showOver({ score: this.score, best: this.best, newBest: this.newBest, maxTier: this.maxTier, merges: this.merges, combo: this.bestCombo, stage: this.stage });
+        FC.UI.showOver({ score: this.score, best: this.best, newBest: this.newBest, maxTier: this.maxTier, maxKind: this.maxKind || null, merges: this.merges, combo: this.bestCombo, stage: this.stage, level: this.level });
       }
     },
 
@@ -1168,9 +1400,10 @@
     setWater(instant, dt) {
       const W = this.world;
       const k = this.state === 'title' ? 0.3 : FC.clamp((this.stage - 1) / 9, 0, 1);
-      const om = FC.lerp(CFG.OMEGA_MIN, CFG.OMEGA_MAX, k);
-      const vr = FC.lerp(CFG.VRIM_MIN, CFG.VRIM_MAX, k);
-      const ring = this.state === 'title' ? CFG.DANGER : ringFor(this.maxTier);
+      const mood = this.state === 'title' || !this.waterMod ? null : this.waterMod; // a level's water has a mood of its own
+      const om = FC.lerp(CFG.OMEGA_MIN, CFG.OMEGA_MAX, k) * (mood ? mood.turn || 1 : 1);
+      const vr = FC.lerp(CFG.VRIM_MIN, CFG.VRIM_MAX, k) * (mood ? mood.rim || 1 : 1);
+      const ring = this.state === 'title' ? CFG.DANGER : ringFor(Math.max(this.maxTier, this.ringTier || 0));
       if (instant || !dt) { W.omegaCore = om; W.vRim = vr; this.ring = ring; }
       else {
         const kk = FC.damp(0.8, dt);
@@ -1191,13 +1424,16 @@
       if (this.state !== 'paused') this.setWater(false, dt);
       const pdt = this.hitstop > 0 ? dt * 0.06 : dt;
       this.hitstop = Math.max(0, this.hitstop - dt);
-      if (this.state === 'playing' || this.state === 'title' || this.state === 'over') this.world.step(pdt);
+      if (this.state === 'playing' || this.state === 'title' || this.state === 'over' || this.state === 'won') this.world.step(pdt);
       if (this.state !== 'paused') {
         this.updateBodies(dt);
         this.updateFoam(dt);
         FX.update(dt);
       }
-      if (this.state === 'playing') {
+      if (this.state === 'playing' && this.won) {
+        this.updateWhirl(pdt);
+        this.updateWon(dt);
+      } else if (this.state === 'playing') {
         if (this.cool > 0) this.cool -= dt;
         if (this.aim.active) this.computeAim();
         this.updateWhirl(pdt); // runs on physics time, so hit-stops do not eat the spin
@@ -1422,12 +1658,12 @@
       if (area > CFG.DANGER * CFG.DANGER * 0.36) {
         for (const b of bodies) {
           b.dead = true;
-          FX.burst(b.x, b.y, { n: 8, colors: TIERS[b.tier].particle, speed: [200, 500], size: [8, 14], kinds: ['star', 'dot'], life: [0.4, 0.8], gravity: 400 });
+          FX.burst(b.x, b.y, { n: 8, colors: spec(b.kind).particle, speed: [200, 500], size: [8, 14], kinds: ['star', 'dot'], life: [0.4, 0.8], gravity: 400 });
         }
         d.wait = 1.0;
         return;
       }
-      const tier = this.queue[0];
+      const tier = CK.tierOf(this.queue[0]);
       const r = TIERS[tier].r;
       const L = this.anchorW(tier);
       // look for a flick that hits a matching cake, like a player reading the preview
@@ -1456,10 +1692,11 @@
     },
 
     fireDemo(d) {
-      const tier = this.queue.shift();
-      this.queue.push(FC.randInt(1, 3));
+      const kind = this.queue.shift();
+      this.queue.push(CK.kindFor(FC.randInt(1, 3)));
+      const tier = CK.tierOf(kind);
       const r = TIERS[tier].r;
-      const b = new Body(tier, r, d.L.x, d.L.y);
+      const b = new Body(tier, r, d.L.x, d.L.y, kind);
       b.vx = d.dir.x * d.speed; b.vy = d.dir.y * d.speed;
       b.launched = true; b.expr = 'wee'; b.exprT = 0.5;
       this.world.add(b);
@@ -1477,6 +1714,7 @@
         if (FC.UI.handOver) FC.UI.setHandOver(false);
         return;
       }
+      if (this.won) { this.hint = null; return; }
       const u = this.handT % HAND_CYCLE;
       let alpha = 0, pull = 0, press = 0;
       if (u < 0.3) { alpha = u / 0.3; }
@@ -1499,19 +1737,20 @@
     // ------------------------------------------------------------
     // what the sling shows right now: the player's aim, the title demo or the tutorial hand
     shotView() {
-      const tier = this.queue[0];
-      if (tier == null) return null;
+      const kind = this.queue[0];
+      if (kind == null) return null;
+      const tier = CK.tierOf(kind);
       if (this.state === 'title') {
         const d = this.demo;
         if (d.phase !== 'pull') return null;
         const k = easeInOut(Math.min(1, d.t / 0.55));
         const pull = this.maxPull() * (0.15 + 0.35 * d.power) * k; // shorter than real, the title card sits below
         const sx = d.dir.x, sy = d.dir.y * S.K, sl = Math.hypot(sx, sy) || 1;
-        return { L: d.L, dir: d.dir, power: d.power * k, pred: k > 0.5 ? d.pred : null, tier, offX: -(sx / sl) * pull * 0.4, offY: -(sy / sl) * pull * 0.4, gripX: -(sx / sl) * pull, gripY: -(sy / sl) * pull, alpha: k };
+        return { L: d.L, dir: d.dir, power: d.power * k, pred: k > 0.5 ? d.pred : null, tier, kind, offX: -(sx / sl) * pull * 0.4, offY: -(sy / sl) * pull * 0.4, gripX: -(sx / sl) * pull, gripY: -(sy / sl) * pull, alpha: k };
       }
       const a = this.aim;
       if (a.active && a.valid) {
-        return { L: a.L, dir: a.dir, power: a.power, pred: a.pred, tier, offX: a.offX, offY: a.offY, gripX: a.gripX, gripY: a.gripY, alpha: 1 };
+        return { L: a.L, dir: a.dir, power: a.power, pred: a.pred, tier, kind, offX: a.offX, offY: a.offY, gripX: a.gripX, gripY: a.gripY, alpha: 1 };
       }
       return null;
     },
@@ -1565,7 +1804,7 @@
       this.drawPool(ctx);
       S.drawWaterFX(ctx, this.t, this.state === 'title' ? 0.6 : 1 + whirlK * 2.2, this.whirlPhase);
       this.drawFoam(ctx);
-      if (this.state === 'playing' || this.state === 'paused') this.drawDangerRing(ctx);
+      if (this.state === 'playing' || this.state === 'paused' || this.state === 'won') this.drawDangerRing(ctx);
       this.drawShadows(ctx);
       const view = this.shotView();
       if (view) this.drawAimPath(ctx, view);
@@ -1574,7 +1813,7 @@
       S.drawFrontLayer(ctx);
       if (view) this.drawAimTop(ctx, view);
       this.grip = null;
-      if (this.state === 'playing' || this.state === 'paused' || this.state === 'title') this.drawLauncher(ctx, view);
+      if (this.state === 'playing' || this.state === 'paused' || this.state === 'title' || this.state === 'won') this.drawLauncher(ctx, view);
       ctx.setTransform(dpr, 0, 0, dpr, sx * dpr, sy * dpr);
       FX.drawTop(ctx, S, dpr);
       S.drawSea(ctx, this.t);
@@ -1721,7 +1960,7 @@
       for (const b of list) {
         if (b.sensor) { this.drawBubble(ctx, b); continue; }
         this.drawTrail(ctx, b);
-        this.drawCake(ctx, b.tier, b.x, b.y, b.r, b, dpr);
+        this.drawCake(ctx, b.kind, b.x, b.y, b.r, b, dpr);
       }
     },
 
@@ -1744,16 +1983,18 @@
       ctx.stroke();
     },
 
-    // draw one cake at world (x, y) with physics radius r
-    drawCake(ctx, tier, x, y, r, b, dpr, scrX, scrY) {
+    // draw one cake (a kind) at world (x, y) with physics radius r
+    drawCake(ctx, kind, x, y, r, b, dpr, scrX, scrY) {
+      const tier = CK.tierOf(kind);
       const T = TIERS[tier];
+      const rare = isRare(kind);
       const p = scrX != null ? { x: scrX, y: scrY } : S.w2s(x, y);
       const base = T.r * S.s;
       let sc = (r / T.r) * (b ? this.popScale(b) : 1);
       sc *= 1 + 0.012 * Math.sin(this.t * 2.2 + (b ? b.phase : 0));
       const rr = base * sc;
       const oy = p.y - rr * 0.45;
-      if (tier === 0 || tier === MAX_T) {
+      if (tier === 0 || tier === MAX_T || rare) {
         const pulse = 0.85 + 0.15 * Math.sin(this.t * 3);
         const g = ctx.createRadialGradient(p.x, oy - rr * 0.2, rr * 0.3, p.x, oy - rr * 0.2, rr * 2.1 * pulse);
         g.addColorStop(0, tier === 0 ? 'rgba(255,255,255,0.55)' : 'rgba(255,240,170,0.55)');
@@ -1763,7 +2004,7 @@
         ctx.arc(p.x, oy - rr * 0.2, rr * 2.1 * pulse, 0, TAU);
         ctx.fill();
       }
-      const sp = FC.Cakes.sprite(tier, base * dpr);
+      const sp = CK.sprite(kind, base * dpr);
       const sq = b ? b.sq : 0;
       const ang = b ? b.sqa : 0;
       ctx.save();
@@ -1781,13 +2022,13 @@
         if (b.launched && b.speed() > 500) expr = 'wee';
         else if (b.danger > 0.15 || (Math.hypot(b.x, b.y) + b.r > this.ring && b.age > 1.1)) expr = 'worried';
       }
-      FC.Cakes.drawFace(ctx, tier, { expr: expr || 'normal', blink: b ? b.blink : 0, lookX: b ? b.lookX : 0, lookY: b ? b.lookY : 0.3 });
+      CK.drawFace(ctx, kind, { expr: expr || 'normal', blink: b ? b.blink : 0, lookX: b ? b.lookX : 0, lookY: b ? b.lookY : 0.3 });
       ctx.restore();
-      if (tier === 0) {
+      if (tier === 0 || rare) {
         for (let i = 0; i < 3; i++) {
           const a = this.t * 2 + (i * TAU) / 3;
           FC.sparklePath(ctx, p.x + Math.cos(a) * rr * 1.25, oy - rr * 0.3 + Math.sin(a) * rr * 0.6, rr * 0.16, 0.3);
-          ctx.fillStyle = ['#ff9fd0', '#ffe27a', '#9ec5ff'][i];
+          ctx.fillStyle = rare ? ['#ffe27a', '#ffffff', '#ffd34d'][i] : ['#ff9fd0', '#ffe27a', '#9ec5ff'][i];
           ctx.fill();
         }
       }
@@ -1934,7 +2175,7 @@
       const h = this.hint;
       if (!h || h.kind !== 'pull' || h.pull <= 0.05) return;
       const g = this.slingGround();
-      const rr = TIERS[this.queue[0]].r * S.s;
+      const rr = kr(this.queue[0]) * S.s;
       const step = S.pr * 0.075;
       const n = Math.round(4 + 6 * h.pull);
       const rad = Math.max(2.4, S.pr * 0.015);
@@ -1952,9 +2193,9 @@
     },
 
     drawLauncher(ctx, view) {
-      const tier = this.queue[0];
-      if (tier == null) return;
-      const r = TIERS[tier].r;
+      const kind = this.queue[0];
+      if (kind == null) return;
+      const r = kr(kind);
       const rr = r * S.s;
       const g = this.slingGround();
       const base = this.slingBase();
@@ -2006,7 +2247,7 @@
       }
       const fake = { sq: 0, sqa: 0, phase: 0, expr: view ? 'normal' : null, blink: 0, lookX: 0, lookY: -0.4, pop: 1, launched: false, danger: 0, x: 0, y: 0, r, age: 0, speed: () => 0 };
       if (view) { fake.sq = 0.13 * view.power; fake.sqa = Math.atan2(view.dir.y * S.K, view.dir.x); fake.lookX = view.dir.x; fake.lookY = view.dir.y; } // squeezed by the band
-      this.drawCake(ctx, tier, 0, 0, r * sc, fake, this.dpr, x, y - hover);
+      this.drawCake(ctx, kind, 0, 0, r * sc, fake, this.dpr, x, y - hover);
       // power ring with 4 notches; it flashes on every detent
       if (view && view.power > 0) {
         const pw = view.power, det = this.aim.detent || 0;
@@ -2149,7 +2390,7 @@
       if (!h || h.alpha <= 0.01) return;
       const s = FC.clamp(S.pr * 0.17, 26, 52);
       const g = this.slingGround();
-      const rr = TIERS[this.queue[0]].r * S.s;
+      const rr = kr(this.queue[0]) * S.s;
       const pullY = this.maxPull() * 0.7 * h.pull;
       const fx = g.x + rr * 0.15;
       const fy = g.y - rr * 0.45 + pullY + (1 - h.press) * s * 0.18;

@@ -3,7 +3,7 @@ const { chromium } = require('playwright');
 const path = require('path');
 (async () => {
   const out = process.argv[2] || '/tmp/start.png';
-  const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || undefined });
+  const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || (require('fs').existsSync('/opt/pw-browsers/chromium-1194/chrome-linux/chrome') ? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' : undefined) });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
   page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
   await page.goto('file://' + path.resolve(__dirname, '..', 'index.html'));

@@ -72,6 +72,21 @@
       flowers: ['#ffffff', '#ff9fca', '#ffe27a', '#c4a8ff', '#ffb38a'],
       castle: { wall: '#fff9f0', shade: '#ebd2c8', roof: '#ff9a80', roofShade: '#cd6656', window: '#9a5666', gold: '#ffd56a' },
     },
+    {
+      key: 'starfall', name: 'Starfall Realm', stars: true, rays: 0.05,
+      sky: [[0, '#2a1a5e'], [0.38, '#5b3a9c'], [0.68, '#c56aa8'], [1, '#ffcf8a']], sun: '#fff0c0', sunX: 0.5,
+      cloud: { light: '#fff6e8', mid: '#f6dfe6', shade: '#d8b4d6', deep: '#a985bd' },
+      fade: '#b48cc4',
+      grass: { hi: '#d9f5b0', light: '#a9df8a', mid: '#75bf6c', dark: '#4f9a5e', deep: '#357a4e', line: '#245a40' },
+      rock: { hi: '#fff0d6', light: '#f4d4a6', mid: '#d6a86e', dark: '#a57a4e', deep: '#6e4e3c', line: '#4a3330' },
+      water: { hi: '#fff4ff', light: '#d0b8ff', mid: '#8f74e8', deep: '#4e3fb8', far: '#3b2f96' },
+      fall: { light: '#ffffff', mid: '#e8dcff', dark: '#b39cf0' },
+      leaf: { hi: '#fff0a8', light: '#ffd870', mid: '#f0b03c', dark: '#c47a1e', line: '#8a4e14' },
+      blossom: { hi: '#fff8e0', light: '#ffe9a8', mid: '#ffcf5a', dark: '#e8a02a', line: '#a86a14' },
+      bark: { light: '#a98870', dark: '#5e4442' },
+      flowers: ['#ffffff', '#ffd34d', '#c9a6ff', '#ff9fd0', '#8fe3ff'],
+      castle: { wall: '#fffaf0', shade: '#e9d6c0', roof: '#c9a6ff', roofShade: '#8f6be6', window: '#ffd86a', gold: '#ffd56a', lit: true },
+    },
   ];
   G.THEMES = THEMES;
 

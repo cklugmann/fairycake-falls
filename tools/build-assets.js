@@ -12,7 +12,7 @@ try { ({ chromium } = require('playwright')); } catch (e) { ({ chromium } = requ
   const root = path.resolve(__dirname, '..');
   const outDir = path.join(root, 'assets');
   fs.mkdirSync(outDir, { recursive: true });
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || (fs.existsSync('/opt/pw-browsers/chromium-1194/chrome-linux/chrome') ? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' : undefined) });
   const page = await browser.newPage();
   page.on('console', (m) => { if (m.type() === 'error') console.error('page:', m.text()); });
   page.on('pageerror', (e) => console.error('pageerror:', e.message));

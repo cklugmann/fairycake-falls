@@ -15,7 +15,7 @@ const BOT = fs.readFileSync(path.join(__dirname, 'bot.js'), 'utf8').match(/const
   const marks = process.argv.slice(3).map(Number);
   const maxShots = marks.length ? Math.max(...marks) : 60;
   fs.mkdirSync(out, { recursive: true });
-  const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || undefined });
+  const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || (require('fs').existsSync('/opt/pw-browsers/chromium-1194/chrome-linux/chrome') ? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' : undefined) });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
   page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
   await page.goto('file://' + path.resolve(__dirname, '..', 'index.html'));

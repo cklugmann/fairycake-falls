@@ -4,8 +4,10 @@
    most, swaps when the next cake is better, sometimes waits for the water to turn the pile,
    and aims with human-like noise.
 
-   usage: npm i -D playwright && node tools/bot.js <games> [maxShots] [skill]
+   usage: npm i -D playwright && node tools/bot.js <games> [maxShots] [skill] [world.level]
           skill 1 = careful, 0.5 = sloppy (half of the flicks are random lobs)
+          world.level (e.g. 1.3 = Candy Woods, level 4) plays that level of the adventure instead of the endless pond,
+          and reports flicks and score at the moment the goal cake is baked (for the star thresholds)
           env BOT_PAR = games run in parallel (default 3), PW_CHROME = path to a Chromium binary
    prints one JSON line per game (shots, score, stage, merges, biggest cake, whirl stats), averages, and the
    time course in buckets of 10 flicks: cakes in the pond, how full the pool is (sum of cake areas over the
@@ -26,6 +28,7 @@ const BOT = `
   for (const k of Object.keys(FC.Audio)) if (typeof FC.Audio[k] === 'function' && k !== 'init') FC.Audio[k] = () => {};
   navigator.vibrate = null;
   FC.store.set('coach', 3);
+  FC.Levels.Progress.load();
   function stepFor(sec) { const n = Math.round(sec / DT); for (let i = 0; i < n; i++) G.update(DT); }
   function settled() {
     for (const b of W.bodies) if (!b.dead && !b.sensor) {
@@ -34,8 +37,9 @@ const BOT = `
     }
     return true;
   }
-  function waitSettle(max) { let t = 0; while (t < max && (!settled() || G.whirl || G.stageDone)) { G.update(DT); t += DT; } return t; }
-  function search(tier) {
+  function waitSettle(max) { let t = 0; while (t < max && !G.won && (!settled() || G.whirl || G.stageDone)) { G.update(DT); t += DT; } return t; }
+  function search(kind) {
+    const tier = FC.Cakes.tierOf(kind);
     const r = T[tier].r, L = G.anchorW(tier);
     let best = null, direct = 0;
     for (let deg = -76; deg <= 76; deg += 3) {
@@ -67,13 +71,13 @@ const BOT = `
     const o = opts || {};
     const maxShots = o.maxShots || 400;
     const skill = o.skill == null ? 1 : o.skill; // 1 = careful, 0.5 = sloppy
-    G.newGame();
+    if (o.level) G.startLevel(o.level.w, o.level.l); else G.newGame();
     stepFor(1.2);
     const log = { whirls: [], danger: 0, waits: 0, rides: 0, disp: 0, dispN: 0, knocks: 0, mergeShots: 0, course: [], firstDanger: null, firstWarn: null, noOffer: 0, directOffer: 0 };
     let shots = 0, simT = 0;
-    while (G.state === 'playing' && shots < maxShots) {
+    while (G.state === 'playing' && !G.won && shots < maxShots) {
       simT += waitSettle(4);
-      if (G.state !== 'playing') break;
+      if (G.state !== 'playing' || G.won) break;
       // wand if in danger
       if (G.danger > 1.5 && G.wands > 0 && G.dangerBody) { G.wandMode = true; const p = FC.Scene.w2s(G.dangerBody.x, G.dangerBody.y); G.wandTap(p.x, p.y - G.dangerBody.r * FC.Scene.s * 0.45); G.update(DT); continue; }
       let tier = G.queue[0];
@@ -99,7 +103,7 @@ const BOT = `
         if (b2.score > best.score) best = b2;
       }
       // use joker when a big pair is close? keep simple: use when owned and the best has no merge
-      if (G.jokers > 0 && best.score <= 0 && Math.random() < 0.6) { G.useJoker(); tier = G.queue[0]; best = search(tier); }
+      if (G.jokers > 0 && best.score <= 0 && Math.random() < 0.6 && G.queue[0] !== 'magic') { G.useJoker(); tier = G.queue[0]; best = search(tier); }
       // human-like noise
       const noise = 3 + (1 - skill) * 8;
       const deg = best.deg + (Math.random() - 0.5) * noise, p = Math.max(0.05, Math.min(1, best.p + (Math.random() - 0.5) * (0.04 + (1 - skill) * 0.1)));
@@ -142,19 +146,21 @@ const BOT = `
         const before = W.bodies.filter((b) => !b.dead && !b.sensor).length;
         const m0 = G.merges;
         let maxEdge = 0;
-        while (G.whirl) { G.update(DT); for (const b of W.bodies) if (!b.dead && !b.sensor) maxEdge = Math.max(maxEdge, Math.hypot(b.x, b.y) + b.r); }
+        let guard = 0;
+        while (G.whirl && G.state === 'playing' && guard++ < 2000) { G.update(DT); for (const b of W.bodies) if (!b.dead && !b.sensor) maxEdge = Math.max(maxEdge, Math.hypot(b.x, b.y) + b.r); }
         stepFor(1.5);
         let edge = 0, outside = 0;
         for (const b of W.bodies) if (!b.dead && !b.sensor) { const e = Math.hypot(b.x, b.y) + b.r; edge = Math.max(edge, e); if (e > 880) outside++; }
         log.whirls.push({ stage: G.stage, shots, before, merges: G.merges - m0, maxEdge: Math.round(maxEdge), edgeAfter: Math.round(edge), outside, danger: G.danger });
       }
     }
+    if (G.won) stepFor(3); // the fireworks, then the card: that is when the stars are recorded
     const tiers = {};
     for (const b of W.bodies) if (!b.dead && !b.sensor) tiers[b.tier] = (tiers[b.tier] || 0) + 1;
     const c = G.culprit;
     const culprit = c ? { tier: c.tier, x: Math.round(c.x), y: Math.round(c.y), vx: Math.round(c.vx), vy: Math.round(c.vy), r: c.r, age: +c.age.toFixed(2), rCalm: Math.round(W.rCalm), inflowK: W.inflowK, stageDone: G.stageDone } : null;
     const all = W.bodies.filter((b) => !b.dead).map((b) => [b.tier, Math.round(b.x), Math.round(b.y), Math.round(b.r), b.sensor ? 'S' : '']);
-    return { state: G.state, shots, score: G.score, stage: G.stage, merges: G.merges, maxTier: G.maxTier, simT: Math.round(simT), bodies: W.count((b) => !b.sensor), tiers, culprit, all, whirls: log.whirls, waits: log.waits, rides: log.rides, meanDisp: Math.round(log.disp / (log.dispN || 1)), knockShots: log.knocks, dangerShots: log.danger, mergeShots: log.mergeShots, noOffer: log.noOffer, directOffer: log.directOffer, firstDanger: log.firstDanger, firstWarn: log.firstWarn, course: log.course };
+    return { state: G.won ? 'won' : G.state, won: !!G.won, stars: G.levelResult ? G.levelResult.stars : 0, shots, score: G.score, stage: G.stage, merges: G.merges, maxTier: G.maxTier, simT: Math.round(simT), bodies: W.count((b) => !b.sensor), tiers, culprit, all, whirls: log.whirls, waits: log.waits, rides: log.rides, meanDisp: Math.round(log.disp / (log.dispN || 1)), knockShots: log.knocks, dangerShots: log.danger, mergeShots: log.mergeShots, noOffer: log.noOffer, directOffer: log.directOffer, firstDanger: log.firstDanger, firstWarn: log.firstWarn, course: log.course };
   }
   window.BOT = { play, search, stepFor, waitSettle };
   window.BOTsettled = settled;
@@ -165,8 +171,10 @@ const BOT = `
   const games = +(process.argv[2] || 3);
   const maxShots = +(process.argv[3] || 400);
   const skill = +(process.argv[4] || 1);
+  const lvArg = process.argv[5];
+  const level = lvArg ? { w: +lvArg.split('.')[0], l: +lvArg.split('.')[1] } : null;
   const par = +(process.env.BOT_PAR || 3);
-  const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || undefined });
+  const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || (require('fs').existsSync('/opt/pw-browsers/chromium-1194/chrome-linux/chrome') ? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' : undefined) });
   const results = [];
   const runOne = async (i) => {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -176,7 +184,7 @@ const BOT = `
     await page.waitForFunction(() => window.FC && FC.Game && FC.Game.state === 'title', null, { timeout: 15000 });
     await page.evaluate(BOT);
     const t0 = Date.now();
-    const r = await page.evaluate(([m, sk]) => window.BOT.play({ maxShots: m, skill: sk }), [maxShots, skill]);
+    const r = await page.evaluate(([m, sk, lv]) => window.BOT.play({ maxShots: m, skill: sk, level: lv }), [maxShots, skill, level]);
     r.wall = ((Date.now() - t0) / 1000).toFixed(1) + 's';
     results[i] = r;
     console.log(JSON.stringify({ ...r, all: undefined, course: undefined, whirls: r.whirls.map((w) => [w.stage, w.shots, w.before, w.merges, w.edgeAfter, w.outside]) }));
@@ -185,6 +193,12 @@ const BOT = `
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(par, games) }, async () => { while (next < games) await runOne(next++); }));
   const avg = (k) => (results.reduce((s, r) => s + (r[k] || 0), 0) / results.length).toFixed(1);
+  if (level) {
+    const won = results.filter((r) => r.won);
+    const med = (arr) => { const a = arr.slice().sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)] : 0; };
+    console.log('LEVEL', lvArg, 'won', won.length + '/' + results.length, 'shots med', med(won.map((r) => r.shots)), 'min', Math.min(...won.map((r) => r.shots)), 'max', Math.max(...won.map((r) => r.shots)),
+      'score med', med(won.map((r) => r.score)), 'min', Math.min(...won.map((r) => r.score)), 'max', Math.max(...won.map((r) => r.score)), 'merges med', med(won.map((r) => r.merges)), 'stars', won.map((r) => r.stars).join(''));
+  }
   console.log('AVG shots', avg('shots'), 'score', avg('score'), 'stage', avg('stage'), 'merges', avg('merges'), 'maxTier', avg('maxTier'), 'simT', avg('simT'),
     'mergeShots%', (100 * results.reduce((s, r) => s + r.mergeShots, 0) / results.reduce((s, r) => s + r.shots, 0)).toFixed(0),
     'noOffer%', (100 * results.reduce((s, r) => s + r.noOffer, 0) / results.reduce((s, r) => s + r.shots, 0)).toFixed(0),

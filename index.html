@@ -15,7 +15,7 @@
     <!-- ===== HUD ===== -->
     <div id="hud" class="hidden">
       <div id="scorePill" class="pill">
-        <div class="pill-level">Stage <b id="lvl">1</b></div>
+        <div class="pill-level"><span id="lvlWord">Stage</span> <b id="lvl">1</b></div>
         <div class="pill-score"><svg viewBox="0 0 24 24" class="star"><path d="M12 2.5l2.9 6 6.6.8-4.9 4.6 1.3 6.5L12 17.2l-5.9 3.2 1.3-6.5L2.5 9.3l6.6-.8z"/></svg><b id="score">0</b></div>
         <div class="pill-order"><div class="pill-bar"><i id="lvlbar"></i></div><span class="pill-goal" id="goal">5 to go</span></div>
       </div>
@@ -23,6 +23,11 @@
       <button id="pauseBtn" class="round-btn" aria-label="Pause">
         <svg viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="2"/><rect x="13.5" y="5" width="4" height="14" rx="2"/></svg>
       </button>
+      <!-- the recipe of the level: what to bake -->
+      <div id="goalChip" class="goal-chip hidden">
+        <canvas id="goalIcon" width="56" height="56"></canvas>
+        <div class="goal-text"><div class="goal-kicker" id="goalKicker">Level 1 · bake the</div><div class="goal-name" id="goalName">???</div></div>
+      </div>
       <button id="nextBtn" class="next-bubble" aria-label="Swap with next cake">
         <canvas id="nextCanvas" width="64" height="64"></canvas>
         <span class="next-label">Next</span>
@@ -49,12 +54,12 @@
       </button>
       <div id="banner" class="banner"><div class="banner-title"></div><div class="banner-sub"></div></div>
       <div id="combo" class="combo"></div>
-      <div id="discover" class="discover"><canvas id="discoverIcon" width="96" height="96"></canvas><div><div class="discover-kicker">New cake!</div><div class="discover-name" id="discoverName"></div></div></div>
+      <div id="discover" class="discover"><canvas id="discoverIcon" width="96" height="96"></canvas><div><div class="discover-kicker" id="discoverKicker">New cake!</div><div class="discover-name" id="discoverName"></div></div></div>
       <div class="coach-wrap"><div id="coach" class="coach"><div class="coach-title"></div><div class="coach-sub"></div><div class="coach-row hidden"></div></div></div>
       <button id="bookHud" class="book-pill" aria-label="Cake Book">
         <svg viewBox="0 0 24 24" class="book-ic"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H11a2 2 0 0 1 1 .3 2 2 0 0 1 1-.3h5.5A1.5 1.5 0 0 1 20 4.5v13a1.5 1.5 0 0 1-1.5 1.5H13.4a1.4 1.4 0 0 0-1.4.9 1.4 1.4 0 0 0-1.4-.9H5.5A1.5 1.5 0 0 1 4 17.5z" fill="#fff"/><path d="M12 5.2v13" stroke="#b98bd9" stroke-width="1.6" stroke-linecap="round"/><path d="M6.5 7.5h3.5M6.5 10h3.5M6.5 12.5h3.5M14 7.5h3.5M14 10h3.5M14 12.5h3.5" stroke="#d8b7ea" stroke-width="1.3" stroke-linecap="round"/><path d="M12 2.2l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2L9.1 4.4l2-.3z" fill="#ffd34d" stroke="#fff" stroke-width=".6"/></svg>
         <span class="book-label">Cake Book</span>
-        <span class="book-count" id="bookCount">1/11</span>
+        <span class="book-count" id="bookCount">1/60</span>
         <span class="book-new" id="bookNew">New!</span>
       </button>
     </div>
@@ -105,13 +110,86 @@
           <div class="goal-text">Flick matching cakes together<br>to bake bigger and bigger ones!</div>
         </div>
         <button id="playBtn" class="btn btn-play"><span class="arrow">&#10148;</span> Play <span class="arrow flip">&#10148;</span></button>
+        <div class="title-progress" id="titleProgress">World 1 · Level 1</div>
         <div class="title-row">
-          <button id="howBtn" class="btn btn-soft">How to play</button>
+          <button id="endlessBtn" class="btn btn-soft">Endless Pond</button>
           <button id="bookBtn" class="btn btn-soft">Cake Book</button>
         </div>
-        <div class="title-best">Best <b id="bestTitle">0</b></div>
+        <div class="title-row">
+          <button id="howBtn" class="btn btn-soft slim">How to play</button>
+        </div>
+        <div class="title-best">Endless best <b id="bestTitle">0</b></div>
       </div>
       <button id="soundBtnTitle" class="round-btn corner" aria-label="Sound"></button>
+    </div>
+
+    <!-- ===== World map ===== -->
+    <div id="map" class="screen map hidden">
+      <div class="map-top">
+        <button id="mapBack" class="round-btn back" aria-label="Back to title"><svg viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <div class="map-title">
+          <div class="map-world" id="mapWorldName">Blossom Falls</div>
+          <div class="map-tag" id="mapWorldTag">The Little Fairy Bakery</div>
+        </div>
+        <button id="mapBookBtn" class="round-btn book" aria-label="Cake Book"><svg viewBox="0 0 24 24"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H11a2 2 0 0 1 1 .3 2 2 0 0 1 1-.3h5.5A1.5 1.5 0 0 1 20 4.5v13a1.5 1.5 0 0 1-1.5 1.5H13.4a1.4 1.4 0 0 0-1.4.9 1.4 1.4 0 0 0-1.4-.9H5.5A1.5 1.5 0 0 1 4 17.5z" fill="#fff"/><path d="M12 5.2v13" stroke="#b98bd9" stroke-width="1.6" stroke-linecap="round"/><path d="M6.5 7.5h3.5M6.5 10h3.5M6.5 12.5h3.5M14 7.5h3.5M14 10h3.5M14 12.5h3.5" stroke="#d8b7ea" stroke-width="1.3" stroke-linecap="round"/></svg><span class="book-new" id="mapBookNew">New!</span></button>
+      </div>
+      <div class="map-body">
+        <button id="mapPrev" class="map-arrow left" aria-label="Previous world">&#8249;</button>
+        <div class="map-card" id="mapCard">
+          <canvas id="mapScene"></canvas>
+          <svg id="mapPath" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+          <div id="mapNodes" class="map-nodes"></div>
+          <canvas id="mapTilly" class="map-tilly" width="72" height="72"></canvas>
+          <div id="mapLock" class="map-lock hidden"><div class="lock-ic">&#128274;</div><div class="lock-text" id="mapLockText"></div></div>
+        </div>
+        <button id="mapNext" class="map-arrow right" aria-label="Next world">&#8250;</button>
+      </div>
+      <div class="map-foot">
+        <div class="map-dots" id="mapDots"></div>
+        <div class="map-stats"><span class="map-stat" id="mapStars">&#9733; 0 / 24</span><span class="map-stat" id="mapCakes">0 / 11 cakes</span></div>
+        <div class="map-blurb" id="mapBlurb"></div>
+      </div>
+    </div>
+
+    <!-- ===== Level card ===== -->
+    <div id="levelCard" class="screen modal hidden">
+      <div class="card level-card">
+        <div class="lc-kicker" id="lcKicker">Blossom Falls · Level 1</div>
+        <h2 id="lcTitle">Bake the ???</h2>
+        <div class="lc-hero"><canvas id="lcIcon" width="160" height="160"></canvas><div class="lc-stars" id="lcStars"></div></div>
+        <div class="lc-hint" id="lcHint"></div>
+        <div class="lc-mod" id="lcMod"></div>
+        <div class="lc-goals" id="lcGoals"></div>
+        <div class="lc-best" id="lcBest"></div>
+        <button id="lcPlay" class="btn btn-play">Bake!</button>
+        <button class="link-btn close-btn" data-close="levelCard">Not now</button>
+      </div>
+    </div>
+
+    <!-- ===== Level clear ===== -->
+    <div id="won" class="screen modal hidden">
+      <div class="card won-card">
+        <h2 class="won-title">Level clear!</h2>
+        <div class="won-stars" id="wonStars"></div>
+        <div class="won-score"><span>Score</span><b id="wonScore">0</b><small id="wonBest"></small></div>
+        <div class="won-cake">
+          <canvas id="wonIcon" width="140" height="140"></canvas>
+          <div class="won-cake-text">
+            <div class="won-kicker" id="wonKicker">New cake!</div>
+            <div class="won-name" id="wonName"></div>
+            <div class="won-epithet" id="wonEpithet"></div>
+            <div class="won-lore" id="wonLore"></div>
+          </div>
+        </div>
+        <div id="wonUnlock" class="ribbon hidden">New world unlocked!</div>
+        <div class="won-row">
+          <button id="wonNext" class="btn btn-play">Next level</button>
+        </div>
+        <div class="won-row">
+          <button id="wonReplay" class="btn btn-soft">Bake again</button>
+          <button id="wonMap" class="btn btn-soft">Map</button>
+        </div>
+      </div>
     </div>
 
     <!-- ===== How to play ===== -->
@@ -124,7 +202,7 @@
         </div>
         <div class="step">
           <div class="num">2</div><canvas class="step-icon" data-icon="merge" width="88" height="88"></canvas>
-          <div class="step-text"><b>Same cakes merge.</b> Two identical cakes that touch become a bigger one. A pink heart in the preview means: match!</div>
+          <div class="step-text"><b>Same cakes merge.</b> Two cakes of the same size that touch become a bigger one. A pink heart in the preview means: match!</div>
         </div>
         <div class="step">
           <div class="num">3</div><canvas class="step-icon" data-icon="water" width="88" height="88"></canvas>
@@ -135,7 +213,9 @@
           <div class="step-text"><b>Keep the ring clear.</b> A cake resting outside the ring for 5 seconds overflows the pond. Merge to make room!</div>
         </div>
         <div class="tips">
-          <div><b>Orders:</b> each stage asks for a number of merges. Fill it and the pond whirls: the pile is shuffled, fresh cakes tumble down the spring, your multiplier rises, a gift arrives.</div>
+          <div><b>Levels:</b> every level is a recipe – bake the cake on the card. Stars come from your score at that moment. Clear level 5 of a world to open the next one.</div>
+          <div><b>Cake Book:</b> every world bakes its own eleven cakes, and rare finds drift into the sling now and then. Merge a rare one to add it to the book.</div>
+          <div><b>Orders:</b> each stage asks for a number of merges. Fill it and the pond whirls: the pile is shuffled, fresh cakes tumble in, your multiplier rises, a gift arrives.</div>
           <div><b>Hot streak:</b> merge with every flick to multiply your points.</div>
           <div><b>Next:</b> tap it to swap your two cakes (or press Space).</div>
           <div><b>Magic Cake &amp; Wand:</b> gifts for finished orders. Fairy Bubbles hold more.</div>
@@ -147,11 +227,27 @@
 
     <!-- ===== Cake book ===== -->
     <div id="book" class="screen modal hidden">
-      <div class="card">
+      <div class="card book-card">
         <h2><span class="leaf">&#10047;</span> Cake Book <span class="leaf">&#10047;</span></h2>
         <p class="sub" id="bookSub">From tiny to fairytale!</p>
+        <div id="bookTabs" class="book-tabs"></div>
         <div id="bookGrid" class="book-grid"></div>
         <button class="btn btn-play small close-btn" data-close="book">Close</button>
+      </div>
+      <div id="bookTip" class="book-tip hidden"></div>
+    </div>
+
+    <!-- ===== Cake detail ===== -->
+    <div id="cakeDetail" class="screen modal detail hidden">
+      <div class="card detail-card">
+        <div class="detail-hero"><canvas id="detailIcon" width="180" height="180"></canvas></div>
+        <div class="detail-tier" id="detailTier">Tier 3 · Cupcake</div>
+        <h2 id="detailName">Strawberry Cupcake</h2>
+        <div class="detail-epithet" id="detailEpithet"></div>
+        <div class="detail-lore" id="detailLore"></div>
+        <div class="detail-ingr" id="detailIngr"></div>
+        <div class="detail-meta" id="detailMeta"></div>
+        <button class="btn btn-play small close-btn" data-close="cakeDetail">Close</button>
       </div>
     </div>
 
@@ -167,6 +263,7 @@
         <button id="pauseBookBtn" class="btn btn-soft">Cake Book</button>
         <button id="pauseHowBtn" class="btn btn-soft">How to play</button>
         <button id="restartBtn" class="btn btn-soft">Restart</button>
+        <button id="pauseMapBtn" class="btn btn-soft">Map</button>
         <button id="menuBtn" class="btn btn-soft">Menu</button>
       </div>
     </div>
@@ -180,7 +277,7 @@
         <div class="over-score"><span>Score</span><b id="overScore">0</b></div>
         <div class="over-best">Best <b id="overBest">0</b></div>
         <div class="over-stats">
-          <div class="stat"><canvas id="overCake" width="80" height="80"></canvas><div><small>Biggest cake</small><b id="overCakeName"></b></div></div>
+          <div class="stat"><canvas id="overCake" width="80" height="80"></canvas><div><small>Biggest cake baked</small><b id="overCakeName"></b></div></div>
           <div class="stat-row">
             <div><small>Stage</small><b id="overLevel">1</b></div>
             <div><small>Merges</small><b id="overMerges">0</b></div>
@@ -188,7 +285,10 @@
           </div>
         </div>
         <button id="againBtn" class="btn btn-play">Play again</button>
-        <button id="overMenuBtn" class="btn btn-soft">Menu</button>
+        <div class="won-row">
+          <button id="overMapBtn" class="btn btn-soft hidden">Map</button>
+          <button id="overMenuBtn" class="btn btn-soft">Menu</button>
+        </div>
       </div>
     </div>
 
@@ -206,6 +306,7 @@
   <script src="assets/manifest.js"></script>
   <script src="js/physics.js"></script>
   <script src="js/cakes.js"></script>
+  <script src="js/levels.js"></script>
   <script src="js/scene.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/audio.js"></script>

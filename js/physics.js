@@ -119,9 +119,12 @@
   let NEXT_ID = 1;
 
   class Body {
-    constructor(tier, r, x, y) {
+    constructor(tier, r, x, y, kind) {
       this.id = NEXT_ID++;
       this.tier = tier;     // 1..11 cakes, 0 = Magic Cake (joker), -1 = Fairy Bubble (sensor)
+      // which cake this is (the kind decides the look and the Cake Book entry; the tier decides size and merges).
+      // Without a kind the active menu's cake of that tier is used
+      this.kind = kind || (tier >= 0 && FC.Cakes ? FC.Cakes.kindFor(tier) : null);
       this.x = x; this.y = y;
       this.vx = 0; this.vy = 0;
       this.r = r; this.rT = r;
