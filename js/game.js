@@ -47,11 +47,13 @@
   // who merges with every flick
   const targetFill = (stage) => Math.min(0.5, 0.36 + 0.025 * (stage - 2)); // (a pool holds ~53 % before the cluster touches the ring)
   const DELIVERY_MAX = 9;
+  const WAND_SPARES = 7;             // in a level the Wand spares the two rungs below the goal, from this tier up
   const ringFor = (maxTier) => Math.min(CFG.DANGER, CFG.RING_MIN + CFG.RING_STEP * Math.max(0, maxTier - 3)); // the calm pool widens with every new cake
   const easeInOut = (k) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
   const WTMP = { x: 0, y: 0 };
   const RARE_P = 0.014;              // chance per spawned cake that it is a rare find (of that tier); more in the world it likes
   const isRare = (kind) => spec(kind).world === 'rare';
+  const TIDE_PERIOD = 18;            // s – one breath of the moon tide (Moonlight Bay, Starfall Realm): ~9 s of low water
 
   const Game = {
     canvas: null, ctx: null, W: 0, H: 0, dpr: 1,
@@ -75,6 +77,8 @@
     jokers: 0, wands: 0, wandMode: false,
     bubble: null, nextBubbleAt: 16,
     danger: 0, dangerBody: null, dangerLimit: 5, warnT: 0, dangerHinted: false,
+    dangerUI: { x: 0, y: 0, a: 0, k: 0, n: -1, bump: 0, body: null }, // the stopwatch over a cake in danger (screen space, eased)
+    tide: 0, tideT: 0, tideAmp: 0, ringBase: 880, trickTip: 0,
     shake: 0, flash: 0, flashCol: '#ffffff',
     overT: 0, overPops: 0,
     discovered: null,
@@ -129,6 +133,8 @@
       this.mode = 'endless';
       this.level = null;
       this.won = false;
+      this.danger = 0; this.dangerBody = null;
+      this.dangerUI.a = 0; this.dangerUI.body = null; this.dangerUI.n = -1; // no stopwatch fading out over the title
       FX.clear();
       this.bubble = null;
       this.wandMode = false;
@@ -185,12 +191,14 @@
       this.jokers = (o.gifts && o.gifts.jokers) || 0; this.wands = (o.gifts && o.gifts.wands) || 0; this.wandMode = false;
       this.bubble = null; this.nextBubbleAt = 14 + FC.randInt(0, 6);
       this.danger = 0; this.dangerBody = null; this.warnT = 0; this.dangerHinted = false;
+      this.dangerUI.a = 0; this.dangerUI.body = null; this.dangerUI.n = -1;
+      this.tide = 0; this.tideT = 0;
       this.cool = 0; this.launcher.pop = 0; this.fly = null;
       this.overT = 0;
       this.cancelAim();
       this.idle = 0; this.handT = -1; this.hint = null; this.ringPulse = 0; this.rideTip = false; this.rareTipFor = null;
       this.hitstop = 0; this.streak = 0; this.pending = [];
-      this.waterMod = o.water || { rim: 1, turn: 1 };
+      this.waterMod = o.water || { rim: 1, turn: 1, tide: 0 };
       this.state = 'playing';
       const theme = o.theme || 0;
       if (S.theme !== theme) { if (S.ready(theme)) S.setTheme(theme, false); else S.load(theme).then(() => { if (this.state === 'playing' && this.worldIndex() === theme) S.setTheme(theme, false); }); }
@@ -207,14 +215,23 @@
       this.queue = tutorial ? [CK.kindFor(1), CK.kindFor(2), CK.kindFor(1)] : [CK.kindFor(first), this.randKind()];
       FC.UI.onNewGame();
       this.coach = tutorial ? { step: 'aim', t: 0, shown: '' } : tourRest ? { step: 'merged', t: 1.4, shown: '' } : null;
+      // level 1 of a world is a warm-up with a trick to it: the start cluster can bake the goal from one good flick
+      this.trickTip = !!(this.level && this.level.l === 0 && !this.coach) ? 2.6 : 0; // after the opening banner
       if (tutorial) this.coachSay('aim', 'Pull the cake back & let go!', 'Like a slingshot');
       this.setWater(true);
       this.buildFoam();
       this.setCursor();
       // the start cluster counts for the book too (the big cakes of a level are "baked" by the castle, not by you –
       // they are shown, but only your own bakes fill the book)
-      if (this.level) FC.UI.setGoal();
-      if (this.level && this.level.def.mod) FC.UI.banner(this.level.def.mod.name, this.level.def.mod.text);
+      if (this.level) { FC.UI.setGoal(); FC.UI.setFlicks(0, this.level.def.par); }
+      // the opening banner names the day's water: the level's own twist, or the world's mood (from level 1 of a world
+      // on, and whenever the mood is not plain spring water)
+      if (this.level) {
+        const def = this.level.def;
+        const mood = def.mood && def.w > 0 ? def.mood : null;
+        if (def.mod && def.mod.name) FC.UI.banner(def.mod.name, def.mod.text);
+        else if (mood) FC.UI.banner(mood.name, mood.text);
+      }
     },
 
     // A populated pond: a run starts with a cluster of cakes that the water has packed together, so the first
@@ -642,6 +659,7 @@
       this.tilly.flick = 1;
       this.shots++;
       this.idle = 0;
+      if (this.level) FC.UI.setFlicks(this.shots, this.level.def.par); // the stars of a level count flicks
       FX.ripple(L.x, L.y, r * 0.8, 0.6, 520);
       FX.burst(L.x, L.y, { n: 10, colors: ['#ffffff', '#c9f6ff'], speed: [200, 600], size: [8, 14], kinds: ['drop', 'dot'], life: [0.3, 0.6], gravity: 0, drag: 4, dir: Math.atan2(dir.y, dir.x) + Math.PI, spread: 1.6 });
       AU.launch(power);
@@ -696,8 +714,24 @@
       this.setCursor();
     },
 
+    // The two big cakes right below a level's goal (the castle's 9 and 10, say) are its recipe: one poofed by a Wand
+    // could not be baked again in the level, and the level would play on with a goal out of reach. So the Wand leaves
+    // them alone and stays ready. Smaller cakes (a 7 or an 8 in a castle) can still go: a costly rescue, not a dead end.
+    wandSpares(b) {
+      return !!(b && this.level && !this.won && b.tier >= Math.max(WAND_SPARES, this.level.def.goal - 2));
+    },
+
     wandTap(x, y) {
-      const hit = this.pickBody(x, y);
+      let hit = this.pickBody(x, y);
+      // a spared giant in front: the finger probably meant the smaller cake peeking out behind it
+      if (this.wandSpares(hit)) hit = this.pickBody(x, y, (b) => this.wandSpares(b)) || hit;
+      if (this.wandSpares(hit)) {
+        hit.expr = 'worried'; hit.exprT = 1.4;
+        FX.popup(hit.x, hit.y - hit.r, 'The recipe needs me!', '#a77ad6', 30);
+        if (AU.nope) AU.nope();
+        FC.UI.coach('Too big for a Wand', 'The recipe needs it – tap a smaller cake', { sticky: true });
+        return;
+      }
       this.wandMode = false;
       FC.UI.coachHide();
       this.setCursor();
@@ -712,8 +746,8 @@
       FC.UI.updatePowers();
     },
 
-    pickBody(sx, sy) {
-      const list = this.world.bodies.filter((b) => !b.dead && !b.sensor).sort((a, b) => b.y - a.y);
+    pickBody(sx, sy, skip) {
+      const list = this.world.bodies.filter((b) => !b.dead && !b.sensor && !(skip && skip(b))).sort((a, b) => b.y - a.y);
       for (const b of list) {
         const p = S.w2s(b.x, b.y);
         const r = b.r * S.s;
@@ -958,7 +992,7 @@
       if (nt > this.maxTier) {
         this.maxTier = nt;
         // a bigger cake needs more room: the calm pool widens
-        if (ringFor(nt) > this.ring + 1 && this.state === 'playing') {
+        if (ringFor(nt) > (this.ringBase || this.ring) + 1 && this.state === 'playing') { // the base ring: the tide is no widening
           this.ringPulse = Math.max(this.ringPulse, 2.2);
           FX.popup(0, -this.ring * 0.55, 'The pool widens!', '#7bdbe8', 30, { life: 1.6 });
         }
@@ -1024,8 +1058,9 @@
       }
       if (this.wonT > 2.6 && this.state === 'playing') {
         this.state = 'won';
-        this.levelResult = LV.Progress.record(this.level.w, this.level.l, this.score);
+        this.levelResult = LV.Progress.record(this.level.w, this.level.l, this.score, this.shots);
         this.levelResult.score = this.score;
+        this.levelResult.par = this.level.def.par;
         // a whirl that was running ends here (the pond keeps floating behind the card, calmly)
         this.whirl = null;
         W.inflowK = 1; W.free = false; W.shear = 0; W.twinK = 1; W.twinAlways = false; W.spin = 0;
@@ -1158,6 +1193,7 @@
             if (this.state !== 'playing' || this.mode !== 'endless') return;
             S.setTheme(nextTheme, false);
             CK.setMenu(nextTheme); // new world, new menu: the cakes from here on wear the new world's flavours
+            this.redress();
             FC.UI.banner('Welcome to ' + S.themeName(nextTheme) + '!', 'Stage ' + n + fresh + ' · ' + gift);
             FC.UI.updateNext();
           });
@@ -1179,6 +1215,22 @@
           for (const b of W.bodies) b.age = -1.4; // a long grace: the ring only counts again after 2.5 s
         }
       }
+    },
+
+    // endless mode, a new world: every cake in the pond and in the queue changes into this world's cake of its size, so
+    // the pond only ever holds one world's menu (two worlds' cakes side by side were hard to tell apart, and a Blossom
+    // Cake merging with a Toadstool Cake broke the "same cake, same size" rule). Rare finds and Magic Cakes stay.
+    redress() {
+      for (const b of this.world.bodies) {
+        if (b.dead || b.sensor || b.tier < 1 || isRare(b.kind)) continue;
+        const k = CK.kindFor(b.tier);
+        if (b.kind === k) continue;
+        b.kind = k;
+        b.pop = Math.min(b.pop, 0.45); // a little bounce sells the change of clothes
+        b.expr = 'love'; b.exprT = 1.2;
+        FX.burst(b.x, b.y - b.r * 0.4, { n: 10, colors: spec(k).particle.concat(['#ffffff']), speed: [140, 420], size: [7, 14], kinds: ['star', 'sprinkle', 'dot'], life: [0.4, 0.9], gravity: 200, up: 120 });
+      }
+      this.queue = this.queue.map((k) => (k === 'magic' || isRare(k) ? k : CK.kindFor(CK.tierOf(k))));
     },
 
     // how full is the calm pool? sum of the cakes' areas over the pool's area (a packed pool reaches ~0.53)
@@ -1270,6 +1322,11 @@
     updateCoach(dt) {
       const a = this.aim;
       if (!a.active && !this.water.active && !this.wandMode) this.idle += dt;
+      if (this.trickTip > 0) {
+        this.trickTip -= dt;
+        if (this.shots > 0) this.trickTip = 0;
+        else if (this.trickTip <= 0) FC.UI.coach('Trick shot!', 'One clever flick can set off the whole chain', { time: 3400 });
+      }
       const c = this.coach;
       // the hand shows the gesture: always during the first steps, later only when the player hesitates
       let hand;
@@ -1388,7 +1445,7 @@
       }
       if (this.overT > 1.0 && !this.overShown && (this.world.count() === 0 || this.overT > 3.2)) {
         this.overShown = true;
-        FC.UI.showOver({ score: this.score, best: this.best, newBest: this.newBest, maxTier: this.maxTier, maxKind: this.maxKind || null, merges: this.merges, combo: this.bestCombo, stage: this.stage, level: this.level });
+        FC.UI.showOver({ score: this.score, best: this.best, newBest: this.newBest, maxTier: this.maxTier, maxKind: this.maxKind || null, merges: this.merges, combo: this.bestCombo, stage: this.stage, shots: this.shots, level: this.level });
       }
     },
 
@@ -1403,7 +1460,14 @@
       const mood = this.state === 'title' || !this.waterMod ? null : this.waterMod; // a level's water has a mood of its own
       const om = FC.lerp(CFG.OMEGA_MIN, CFG.OMEGA_MAX, k) * (mood ? mood.turn || 1 : 1);
       const vr = FC.lerp(CFG.VRIM_MIN, CFG.VRIM_MAX, k) * (mood ? mood.rim || 1 : 1);
-      const ring = this.state === 'title' ? CFG.DANGER : ringFor(Math.max(this.maxTier, this.ringTier || 0));
+      // the moon tide: the calm pool breathes in and out (it starts at mid water, rising). Frozen during the whirl and
+      // after the bake, so the reshuffle and the lap of honour are not judged against a moving ring
+      const tideAmp = mood && mood.tide && this.state !== 'title' ? mood.tide : 0;
+      if (tideAmp && dt && this.state === 'playing' && !this.whirl && !this.won) this.tideT += dt;
+      this.tide = tideAmp ? tideAmp * Math.sin((this.tideT / TIDE_PERIOD) * TAU) : 0;
+      this.ringBase = this.state === 'title' ? CFG.DANGER : ringFor(Math.max(this.maxTier, this.ringTier || 0));
+      this.tideAmp = tideAmp;
+      const ring = this.state === 'title' ? CFG.DANGER : Math.min(CFG.DANGER, this.ringBase + this.tide);
       if (instant || !dt) { W.omegaCore = om; W.vRim = vr; this.ring = ring; }
       else {
         const kk = FC.damp(0.8, dt);
@@ -1455,6 +1519,7 @@
         if (this.aim.detent) this.aim.detent = Math.max(0, this.aim.detent - dt * 5);
         this.ringPulse = Math.max(0, this.ringPulse - dt);
       }
+      if (this.state !== 'paused') this.updateDangerUI(dt);
       this.updateHint();
       this.placeTilly(false, dt);
       this.shake = Math.max(0, this.shake - dt * 30);
@@ -1515,7 +1580,10 @@
       const band = anywhere ? Math.random() < 0.75 : Math.random() < 0.85;
       const r0 = band ? FC.lerp(W.rCalm + 30, CFG.R - 40, Math.random()) : FC.lerp(CFG.INFLOW_CORE + 40, W.rCalm - 20, Math.random());
       const life = FC.rand(3.5, 7);
-      return { x: Math.cos(a) * r0, y: Math.sin(a) * r0, t: anywhere ? Math.random() * life : 0, life, s: FC.rand(0.6, 1.3), petal: Math.random() < 0.4, ph: Math.random() * TAU, vx: 0, vy: 0 };
+      // the world decides what rides the current (petals, leaves, stars …) and how much of it there is
+      const fs = S.foamStyle ? S.foamStyle(S.theme) : null;
+      const share = fs && fs.petalShare != null ? fs.petalShare : 0.4;
+      return { x: Math.cos(a) * r0, y: Math.sin(a) * r0, t: anywhere ? Math.random() * life : 0, life, s: FC.rand(0.6, 1.3), petal: Math.random() < share, ph: Math.random() * TAU, vx: 0, vy: 0 };
     },
     updateFoam(dt) {
       if (!this.foam.length) return;
@@ -1541,7 +1609,9 @@
     },
     drawFoam(ctx) {
       if (!this.foam.length) return;
-      const pal = [['#ffffff', '#ffd6ea', '#ffb3d9'], ['#ffffff', '#ffe27a', '#8fe3ff'], ['#fff6c8', '#ffffff', '#d6e8ff'], ['#ffffff', '#ffb3c6', '#b5f0c8', '#c9c0ff']][S.theme % 4];
+      // hook for the world's look: S.foamStyle(theme) -> { colors: [foam, petal colours…], petalShare, drawPetal(ctx, x, y, size, ang, col, alpha, i, t) }
+      const fs = S.foamStyle ? S.foamStyle(S.theme) : null;
+      const pal = (fs && fs.colors) || [['#ffffff', '#ffd6ea', '#ffb3d9'], ['#ffffff', '#ffe27a', '#8fe3ff'], ['#fff6c8', '#ffffff', '#d6e8ff'], ['#ffffff', '#ffb3c6', '#b5f0c8', '#c9c0ff']][S.theme % 4];
       const boost = this.foamPulse > 0 ? 1 + 0.6 * Math.min(1, this.foamPulse) : 1;
       const W = this.world;
       ctx.save();
@@ -1569,7 +1639,10 @@
         const p = S.w2s(f.x, f.y);
         const sp = Math.hypot(f.vx, f.vy);
         const al = (0.22 + 0.5 * Math.min(1, sp / 450)) * k * boost;
-        if (f.petal) {
+        if (f.petal && fs && fs.drawPetal) {
+          const ang = Math.atan2(f.vy * S.K, f.vx) + Math.sin(f.ph + this.t * 2) * 0.5;
+          fs.drawPetal(ctx, p.x, p.y, base * f.s, ang, pal[1 + (i % (pal.length - 1))], Math.min(0.9, al + 0.15), i, this.t);
+        } else if (f.petal) {
           // a little blossom petal, turned along the flow
           const ang = Math.atan2(f.vy * S.K, f.vx) + Math.sin(f.ph + this.t * 2) * 0.5;
           ctx.save();
@@ -1804,6 +1877,7 @@
       this.drawPool(ctx);
       S.drawWaterFX(ctx, this.t, this.state === 'title' ? 0.6 : 1 + whirlK * 2.2, this.whirlPhase);
       this.drawFoam(ctx);
+      if (S.drawWaterAmbient) S.drawWaterAmbient(ctx, this.t); // the world's touch on the water (reflections, floating leaves …), under the cakes
       if (this.state === 'playing' || this.state === 'paused' || this.state === 'won') this.drawDangerRing(ctx);
       this.drawShadows(ctx);
       const view = this.shotView();
@@ -1818,6 +1892,7 @@
       FX.drawTop(ctx, S, dpr);
       S.drawSea(ctx, this.t);
       S.drawSparkles(ctx);
+      if (S.drawAmbientFront) S.drawAmbientFront(ctx, this.t); // the world's weather in front (falling leaves, petals, snow …)
       // pull line and tutorial hand stay above the cloud sea (short screens pull into it)
       this.drawGrip(ctx);
       if (this.hint) this.drawHand(ctx);
@@ -1831,6 +1906,7 @@
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, this.W, this.H);
       }
+      this.drawDangerTimer(ctx); // always on top of the pond, the cakes and the particles
       if (this.wandMode) {
         ctx.fillStyle = 'rgba(120,80,200,0.12)';
         ctx.fillRect(0, 0, this.W, this.H);
@@ -1874,6 +1950,18 @@
       }
       const col = k > 0.1 ? FC.mix('#ffffff', '#ff4f86', Math.min(1, k * 1.6)) : this.ringPulse > 0 ? '#ffe0ef' : S.theme === 2 ? '#fff6c8' : '#ffffff';
       const alpha = 0.62 + (k > 0.1 ? 0.3 * (0.5 + 0.5 * Math.sin(this.t * 10)) : 0);
+      // the moon tide: a faint line where the pool will shrink to at low water, so the breathing ring can be read
+      if (this.tideAmp > 0 && this.state !== 'title') {
+        const lo = Math.max(100, this.ringBase - this.tideAmp) * S.s;
+        const low = this.tide < -this.tideAmp * 0.55;
+        ctx.setLineDash([2, Math.max(5, lo * 0.035)]);
+        ctx.lineDashOffset = -this.whirlPhase * lo * 0.9;
+        ctx.beginPath();
+        ctx.ellipse(S.cx, S.cy, lo, lo * K, 0, 0, TAU);
+        ctx.lineWidth = Math.max(1.2, S.pr * 0.008);
+        ctx.strokeStyle = FC.rgba(S.theme === 2 ? '#d8e4ff' : '#ffffff', low ? 0.5 : 0.28);
+        ctx.stroke();
+      }
       ctx.setLineDash([Math.max(4, pr * 0.03), Math.max(6, pr * 0.045)]);
       ctx.lineDashOffset = -this.whirlPhase * pr * 0.9 - this.t * 18;
       ctx.beginPath();
@@ -1905,31 +1993,142 @@
         ctx.stroke();
       }
       ctx.restore();
+      // the cake in danger: a pulsing red halo on the water round its foot (under the cake – the stopwatch above it
+      // is drawn last, on top of everything, see drawDangerTimer)
       const db = this.dangerBody;
       if (db && this.danger > CFG.WARN_AT && !db.dead) {
-        const left = Math.max(0, (this.dangerLimit || CFG.DANGER_TIME) - this.danger);
         const p = S.w2s(db.x, db.y);
         const r = db.r * S.s;
-        const n = Math.ceil(left);
-        const y = p.y - r * 2.2;
-        const sc = 1 + 0.15 * Math.sin(this.t * 12);
+        const kk = FC.clamp((this.danger - CFG.WARN_AT) / ((this.dangerLimit || CFG.DANGER_TIME) - CFG.WARN_AT), 0, 1);
+        const pulse = 0.5 + 0.5 * Math.sin(this.t * (8 + kk * 10));
         ctx.save();
-        ctx.translate(p.x, y);
-        ctx.scale(sc, sc);
         ctx.beginPath();
-        ctx.arc(0, 0, n >= 10 ? 17 : 15, 0, TAU);
-        ctx.fillStyle = '#ff4f86';
-        ctx.fill();
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = '#ffffff';
+        ctx.ellipse(p.x, p.y + r * 0.05, r * (1.18 + 0.08 * pulse), r * S.K * (0.74 + 0.05 * pulse), 0, 0, TAU);
+        ctx.lineWidth = Math.max(3, r * 0.12);
+        ctx.strokeStyle = FC.rgba('#ff3f7a', 0.45 + 0.4 * pulse);
         ctx.stroke();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '700 18px Fredoka, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(String(n), 0, 1);
         ctx.restore();
       }
+    },
+
+    // The overflow countdown: a big stopwatch over the cake that is about to overflow the pond. It is drawn after
+    // everything else on the canvas (cakes, the front bank, particles, the cloud sea), eases after its cake, stays on
+    // screen and clear of the HUD, and points at the cake with a little tail. The ring of the watch runs down with the
+    // time that is left; the last two seconds shake.
+    updateDangerUI(dt) {
+      const u = this.dangerUI;
+      const db = this.dangerBody;
+      const on = this.state === 'playing' && !this.won && !this.whirl && db && !db.dead && this.danger > CFG.WARN_AT;
+      u.a += ((on ? 1 : 0) - u.a) * FC.damp(on ? 14 : 9, dt);
+      if (u.a < 0.01 && !on) { u.body = null; u.n = -1; return; }
+      if (!on) return; // fading out where it is
+      const R = this.dangerRadius();
+      const p = S.w2s(db.x, db.y);
+      const rr = db.r * S.s;
+      const ext = (CK.EXTENT && CK.EXTENT[spec(db.kind).style]) || { top: 1.6 };
+      const cakeTop = p.y - rr * (0.45 + ext.top);
+      const topSafe = FC.UI && FC.UI.hudBottom ? FC.UI.hudBottom() + 8 : 90;
+      let x = FC.clamp(p.x, R + 10, this.W - R - 10);
+      let y = cakeTop - R * 1.25;
+      u.below = false;
+      if (y - R < topSafe) { y = Math.max(y, topSafe + R); if (y + R > cakeTop + rr * 0.6) { u.below = true; y = p.y + rr * 0.6 + R * 1.3; } }
+      y = FC.clamp(y, topSafe + R, this.H - R - 10);
+      u.tx = p.x; u.ty = u.below ? p.y + rr * 0.3 : cakeTop + rr * 0.2; // where the tail points
+      if (u.body !== db || u.a < 0.05) { u.x = x; u.y = y; u.body = db; u.k = 0.3; }
+      else { const kk = FC.damp(12, dt); u.x += (x - u.x) * kk; u.y += (y - u.y) * kk; }
+      u.k += (1 - u.k) * FC.damp(10, dt);
+      const left = Math.max(0, (this.dangerLimit || CFG.DANGER_TIME) - this.danger);
+      const n = Math.ceil(left);
+      if (n !== u.n) { if (u.n >= 0 && n < u.n) u.bump = 1; u.n = n; }
+      u.bump = Math.max(0, u.bump - dt * 3.5);
+      u.left = left;
+      u.frac = FC.clamp(left / Math.max(0.1, (this.dangerLimit || CFG.DANGER_TIME) - CFG.WARN_AT), 0, 1);
+    },
+    dangerRadius() {
+      return FC.clamp(S.pr * 0.085, 24, 40);
+    },
+    drawDangerTimer(ctx) {
+      const u = this.dangerUI;
+      if (u.a < 0.02 || u.n < 0) return;
+      const R = this.dangerRadius();
+      const urgent = u.left < 2;
+      const shake = urgent ? Math.sin(this.t * 60) * R * 0.05 : 0;
+      const pulse = 1 + 0.06 * Math.sin(this.t * (urgent ? 18 : 10)) + 0.22 * u.bump;
+      const x = u.x + shake, y = u.y;
+      ctx.save();
+      ctx.globalAlpha = u.a;
+      // the tail towards the cake
+      const ang = Math.atan2(u.ty - y, u.tx - x);
+      const tl = Math.min(R * 0.9, Math.max(0, Math.hypot(u.tx - x, u.ty - y) - R * 0.6));
+      if (tl > 2) {
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(ang - 0.42) * R * 0.86, y + Math.sin(ang - 0.42) * R * 0.86);
+        ctx.lineTo(x + Math.cos(ang) * (R * 0.86 + tl), y + Math.sin(ang) * (R * 0.86 + tl));
+        ctx.lineTo(x + Math.cos(ang + 0.42) * R * 0.86, y + Math.sin(ang + 0.42) * R * 0.86);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#c4285f';
+        ctx.stroke();
+      }
+      ctx.translate(x, y);
+      ctx.scale(pulse * u.k, pulse * u.k);
+      // soft shadow
+      ctx.beginPath();
+      ctx.ellipse(0, R * 0.95, R * 0.8, R * 0.2, 0, 0, TAU);
+      ctx.fillStyle = 'rgba(80,20,50,0.25)';
+      ctx.fill();
+      // crown and side buttons of the stopwatch
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#c4285f';
+      ctx.lineWidth = 2;
+      FC.roundRect(ctx, -R * 0.2, -R * 1.32, R * 0.4, R * 0.3, R * 0.08); ctx.fill(); ctx.stroke();
+      FC.roundRect(ctx, -R * 0.12, -R * 1.12, R * 0.24, R * 0.2, R * 0.04); ctx.fill(); ctx.stroke();
+      for (const sx of [-1, 1]) {
+        ctx.save();
+        ctx.rotate(sx * 0.75);
+        FC.roundRect(ctx, -R * 0.11, -R * 1.18, R * 0.22, R * 0.24, R * 0.06); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+      // the face
+      ctx.beginPath();
+      ctx.arc(0, 0, R, 0, TAU);
+      const g = ctx.createRadialGradient(-R * 0.35, -R * 0.4, R * 0.1, 0, 0, R);
+      g.addColorStop(0, urgent ? '#ff8aa8' : '#ff9cb8');
+      g.addColorStop(1, urgent ? '#e3124f' : '#ff3f7a');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.lineWidth = Math.max(3, R * 0.13);
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#c4285f';
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 1.07, 0, TAU);
+      ctx.stroke();
+      // the time that is left: a bright arc that runs down
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.74, -Math.PI / 2, -Math.PI / 2 + TAU * u.frac);
+      ctx.lineWidth = R * 0.17;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.74, -Math.PI / 2 + TAU * u.frac, -Math.PI / 2 + TAU);
+      ctx.strokeStyle = 'rgba(120,0,40,0.25)';
+      ctx.stroke();
+      // seconds left
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 ' + Math.round(R * 0.95) + 'px Fredoka, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = Math.max(2, R * 0.12);
+      ctx.strokeStyle = '#b0154a';
+      ctx.lineJoin = 'round';
+      ctx.strokeText(String(Math.max(1, u.n)), 0, R * 0.05);
+      ctx.fillText(String(Math.max(1, u.n)), 0, R * 0.05);
+      ctx.restore();
     },
 
     drawShadows(ctx) {

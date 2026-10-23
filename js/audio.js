@@ -506,12 +506,22 @@
       this.phrase([0, 2, 3, 5], 0.11, 0.12, 1.1);
       this.tone(midi(55), 0.6, { type: 'triangle', vol: 0.07, delay: 0.3 });
     },
+    // a star lands on the level-clear card: a bright two-note chime, a step higher for each star
+    star(i) {
+      this.phrase([7 + i * 2, 9 + i * 2], 0.06, 0.11, 1.0);
+      this.noise(0.2, { freq: 6000, sweep: 9000, q: 0.8, vol: 0.02 });
+    },
     royal() {
       this.phrase([0, 2, 3, 5, 7, 8, 10, 12], 0.06, 0.11, 1.8);
       this.noise(1.2, { freq: 3000, sweep: 9000, q: 0.5, vol: 0.05, echo: true });
     },
     swap() {
       this.phrase([4, 7], 0.06, 0.055, 0.3);
+    },
+    // the Wand will not take that cake: a soft "uh-uh", two short notes, the second a step lower
+    nope() {
+      this.tone(midi(76), 0.08, { type: 'triangle', vol: 0.05 });
+      this.tone(midi(74), 0.12, { type: 'triangle', vol: 0.045, delay: 0.13 });
     },
     poof() {
       this.noise(0.4, { freq: 3000, sweep: 600, q: 0.7, vol: 0.12, echo: true });

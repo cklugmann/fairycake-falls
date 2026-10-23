@@ -12,6 +12,14 @@ and its ingredients. Rare finds drift into the sling now and then. The classic
 endless pond is still there as **Endless Pond**, and it drifts through the worlds you
 have unlocked.
 
+**v0.8 – neat bakes and five different worlds.** Stars now count flicks: ★ for baking
+the cake, ★★ and ★★★ for baking it in few flicks – the level card and a little meter at
+the top show how many, so a quick bake is always the best bake. Every world's water has a
+mood of its own (the autumn wind, the moon tide, the high winds …) and the forty levels
+climb more evenly. Every cake has its own look, so no two cakes in a level can be
+mistaken for each other, and the worlds look like five different places. The overflow
+stopwatch sits on top of everything now.
+
 Your first level is a short guided tour that shows the gestures and the goal.
 
 Prototype: pure HTML / CSS / JavaScript, no backend, no build step.
@@ -35,7 +43,7 @@ Mouse and touch work the same.
 | Cancel a flick | Drag back to where you started (or right-click) | `Esc` |
 | Swap current / next cake | Tap **Next** | `Space` |
 | Magic Cake (joker) | Tap its button (appears once you earn one) | – |
-| Wand (remove a cake) | Tap its button, then a cake | – |
+| Wand (remove a cake; in a level not the big cakes the recipe needs) | Tap its button, then a cake | – |
 | Pause | Pause button | `Esc` |
 | World map | Swipe the card or tap the arrows | `←` `→` |
 
@@ -48,12 +56,15 @@ one curves and lands gently. Merge with every flick to build a **hot streak**.
 ## The adventure
 
 - **Worlds:** Blossom Falls, Candy Woods, Moonlight Bay, Rainbow Heights, Starfall Realm.
-  Each world has its own eleven cakes (the shape says the size, the world says the flavour)
-  and its own painted backdrop.
+  Each world has its own eleven cakes (the shape says the size, the world says the flavour),
+  its own painted backdrop and weather, and a water mood that grows towards its castle:
+  spring water, the autumn wind (a faster rim current), the moon tide (the calm pool breathes
+  in and out), high winds (the pool turns quickly) and the Starfall rapids (a bit of everything).
 - **Levels:** eight per world. The level card names the cake to bake (a silhouette with a
   hint until you have baked it once). The pond starts with a few bigger cakes already in it,
-  placed so that the goal is a few dozen merges away – never a free cascade. One star for
-  baking it, two and three for the score at that moment. The next world opens when you clear
+  placed so that the goal is some merges away – never a free cascade. ★ for baking it, ★★ and
+  ★★★ for baking it within a number of flicks (the card says how many; the meter in the
+  recipe chip at the top counts them, "★★★ 4/9"). The next world opens when you clear
   level 5 of the one before.
 - **Orders and the whirl** still set the beat inside a level: fill the order and the pond
   whirls, fresh cakes tumble down the spring, your multiplier rises, a gift arrives.
@@ -63,7 +74,8 @@ one curves and lands gently. Merge with every flick to build a **hot streak**.
 - **Rare finds:** five cakes that can take the place of a normal cake in the sling in any
   world (some prefer one world). Merge one to add it to the book and earn bonus points.
 - **Endless Pond:** the classic high-score game. Every third stage the island drifts into the
-  next world you have unlocked, and the cakes from then on wear that world's flavours.
+  next world you have unlocked, and every cake in the pond changes into that world's cake of
+  its size.
 
 ## Project structure
 
@@ -73,8 +85,9 @@ css/style.css       UI styles            css/font.css   embedded Fredoka font
 js/core.js          helpers (math, colours, storage)
 js/physics.js       pond physics (whirlpool, pull, drag), merges, aim prediction   <- main tuning constants
 js/cakes.js         cake tiers (sizes), the collection (every cake's look, name, lore) and the procedural cake art
-js/levels.js        worlds, levels (goal, start cluster, water mood, gifts), stars, progress and the Cake Book store
+js/levels.js        worlds, levels (goal, start cluster, water mood, gifts, flicks for the stars), progress, the Cake Book store
 js/scene.js         background composition, tilted projection, waterfalls, water FX
+js/ambient.js       the weather of the worlds: petals, autumn leaves, fireflies, balloons, the aurora, shooting stars …
 js/game.js          game rules, slingshot input, tutorial coach, scoring, modes (level / endless), power-ups, rendering
 js/fx.js            particles, ripples, popups
 js/audio.js         Web Audio sound effects + "Tilly's Lullaby"
@@ -83,7 +96,8 @@ js/main.js          bootstrap + debug hooks (FCdebug.level(w, l), FCdebug.unlock
 assets/             pre-painted background layers (WebP) for the five worlds + manifest.js
 tools/              asset generator (re-creates everything in assets/), bot.js balance harness (levels too),
                     snap.js screenshot replay, physlab.js physics experiments (Node, no browser),
-                    check-start.js start-layout check, cakesheet.html (every cake on one page)
+                    check-start.js / check-levels.js start-layout checks, cakesheet.html (every cake on one
+                    page, with phone-scale pond strips), cakecheck.js (no two cakes of one pond look alike)
 DESIGN.md           game design: rules, numbers, art direction, next steps
 ```
 
@@ -100,6 +114,8 @@ node tools/build-assets.js 4      # only world 5
 
 You can also open `tools/generate.html` in a browser to watch it paint, and
 `tools/cakesheet.html` to see every cake of the collection on one page.
+`node tools/cakecheck.js` measures, for every pair of cakes that can meet in one pond, how alike
+their outlines and colours are (exit code 1 when a pair could be mistaken for each other).
 
 ## Credits
 
@@ -113,6 +129,9 @@ npm i -D playwright                 # once (Chromium is downloaded by Playwright
 node tools/bot.js 4 400 1           # 4 careful endless games, up to 400 flicks each
 node tools/bot.js 4 400 0.5         # 4 sloppy games (half of the flicks are random lobs)
 node tools/bot.js 4 400 1 2.5       # 4 careful games of Moonlight Bay, level 6: flicks and score at the clear
+BOT_FAST=1 node tools/bot.js 8 160 0.85 2.5   # the quicker search the flick limits for the stars were measured with
+BOT_START='[8,7,6,2,1,2,1]' node tools/bot.js 8 160 0.85 2.5   # try another start cluster for that level
+node tools/check-levels.js          # every level's start layout: tries, fallbacks, self-merges, reach, fill
 node tools/snap.js out 1 10 40 80   # screenshots of a bot game at these flicks
 node tools/physlab.js all           # cluster physics experiments, no browser needed
 node tools/render-music.js out.wav 110  # render the music to a WAV file (to listen outside the game)
@@ -121,7 +140,8 @@ python3 tools/dissonance.py out.wav     # how often strong notes clash (semitone
 
 `bot.js` prints one JSON line per game plus a time course in buckets of ten flicks
 (cakes in the pond, fill of the pool, merges on offer, hearts in the preview, warnings);
-with a `world.level` argument it also prints a LEVEL line (won, flicks and score at the
-clear, stars) that the star thresholds in `js/levels.js` were set from.
+with a `world.level` argument it also prints a LEVEL line (won, the flicks at the clear as
+quartiles, the stars) and a FLICKS line (every bake's flicks) that the flick limits for the
+stars (`PAR` in `js/levels.js`) were set from.
 Set `PW_CHROME=/path/to/chrome` to use a Chromium you already have and `BOT_PAR=2` to
 run games in parallel.

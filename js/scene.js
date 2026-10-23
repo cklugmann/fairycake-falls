@@ -177,6 +177,7 @@
       for (let i = 0; i < 3; i++) {
         this.puffs.push({ k: i, x: Math.random() * this.W, y: (0.15 + Math.random() * 0.55) * Math.max(40, this.bankTopY - 30), v: 4 + Math.random() * 7, sc: 0.5 + Math.random() * 0.35 });
       }
+      if (FC.Ambient) FC.Ambient.reset(); // the worlds' particles are laid out for the screen size
     },
     newGlint(age) {
       const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * 0.9;
@@ -202,6 +203,7 @@
         g.t += dt / g.d;
         if (g.t >= 1) this.glints[i] = this.newGlint(0);
       }
+      if (FC.Ambient) FC.Ambient.update(dt);
     },
 
     // ---------------- drawing ----------------
@@ -225,6 +227,16 @@
       }
     },
 
+    // where the far layer (the castle island) sits on screen: its anchor and scale (the ambient layer needs it too –
+    // the rainbow of Rainbow Heights is painted into that layer)
+    farPlace(ti) {
+      const fm = this.meta(ti).far;
+      const anchorY = this.bankTopY - this.pr * 0.3;
+      let kf = (this.pr * 1.05) / fm.iw;
+      kf = Math.max(kf * 0.55, Math.min(kf, (anchorY - 4) / Math.max(1, fm.ay - fm.top)));
+      return { x: this.cx, y: anchorY, k: kf, m: fm };
+    },
+
     paintMid(ctx, ti) {
       const set = this.imgs[ti];
       const M = this.meta(ti);
@@ -232,11 +244,8 @@
       const ro = this.pr * (M.island.ringR / M.island.pondR);
       this.blit(ctx, set.sideL, M.sideL, this.cx - ro * 1.4, this.cy - this.pr * 0.62, ks2);
       this.blit(ctx, set.sideR, M.sideR, this.cx + ro * 1.42, this.cy - this.pr * 0.8, ks2);
-      const fm = M.far;
-      const anchorY = this.bankTopY - this.pr * 0.3;
-      let kf = (this.pr * 1.05) / fm.iw;
-      kf = Math.max(kf * 0.55, Math.min(kf, (anchorY - 4) / Math.max(1, fm.ay - fm.top)));
-      this.blit(ctx, set.far, fm, this.cx, anchorY, kf);
+      const fp = this.farPlace(ti);
+      this.blit(ctx, set.far, fp.m, fp.x, fp.y, fp.k);
       const im = M.island;
       if (set.island && set.island.naturalWidth) ctx.drawImage(set.island, this.cx - im.pondX * this.ki, this.cy - im.pondY * this.ki, im.w * this.ki, im.h * this.ki);
     },
@@ -247,6 +256,8 @@
       const W = this.W, H = this.H;
       ctx.drawImage(c.sky, 0, 0, W, H);
       const a0 = ctx.globalAlpha;
+      // the world's own sky life (aurora, balloons, shooting stars …) sits behind the clouds and the islands
+      if (FC.Ambient) FC.Ambient.sky(ctx, ti, a0);
       ctx.globalAlpha = a0 * 0.85;
       for (const p of this.puffs) {
         const pf = c.puffs[p.k];
@@ -256,10 +267,13 @@
       }
       ctx.globalAlpha = a0;
       ctx.drawImage(c.mid, 0, 0, W, H);
+      if (FC.Ambient) FC.Ambient.over(ctx, ti, a0);
     },
 
     drawBack(ctx, t) {
       if (this.prevTheme >= 0 && this.fade < 1) {
+        // the new world fades in over the old one (the old one stays opaque underneath)
+        ctx.globalAlpha = 1;
         this.drawThemeBack(ctx, this.prevTheme);
         ctx.globalAlpha = FC.ease.inOutSine(this.fade);
         this.drawThemeBack(ctx, this.theme);
@@ -418,7 +432,8 @@
 
     drawSparkles(ctx) {
       const pal = this.pal();
-      const col = this.theme === 2 ? '#fff6c8' : '#ffffff';
+      // warm gold in the autumn light and at the starry dusk, moonlit cream at night, white by day
+      const col = ['#ffffff', '#ffe6a6', '#fff6c8', '#ffffff', '#ffe9a8'][this.theme] || '#ffffff';
       for (const s of this.sparkles) {
         const k = 0.5 + 0.5 * Math.sin(s.p);
         if (k < 0.1) continue;

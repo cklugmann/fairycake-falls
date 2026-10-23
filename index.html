@@ -16,17 +16,25 @@
     <div id="hud" class="hidden">
       <div id="scorePill" class="pill">
         <div class="pill-level"><span id="lvlWord">Stage</span> <b id="lvl">1</b></div>
-        <div class="pill-score"><svg viewBox="0 0 24 24" class="star"><path d="M12 2.5l2.9 6 6.6.8-4.9 4.6 1.3 6.5L12 17.2l-5.9 3.2 1.3-6.5L2.5 9.3l6.6-.8z"/></svg><b id="score">0</b></div>
+        <!-- the score wears a sparkle, not a star: stars are what a level gives for baking its cake in few flicks -->
+        <div class="pill-score"><svg viewBox="0 0 24 24" class="sparkle"><path d="M12 1.8c.9 5 3.9 8 8.9 8.9-5 .9-8 3.9-8.9 8.9-.9-5-3.9-8-8.9-8.9 5-.9 8-3.9 8.9-8.9z"/><circle cx="19.2" cy="4.6" r="1.7"/><circle cx="4.9" cy="19.2" r="1.3"/></svg><b id="score">0</b></div>
         <div class="pill-order"><div class="pill-bar"><i id="lvlbar"></i></div><span class="pill-goal" id="goal">5 to go</span></div>
+        <div id="streak" class="streak"><svg viewBox="0 0 24 24" class="streak-ic"><path d="M12 2.5c1.2 3.2 4.8 5.2 4.8 9.6A4.8 4.8 0 0 1 7.2 12c0-1.6.7-2.9 1.6-3.9.2 1.5 1 2.5 2.1 2.9C10.4 7.9 11 5 12 2.5z" fill="#fff3a8" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><path d="M12 21.5a5.6 5.6 0 0 1-5.6-5.6c0-1 .2-1.9.7-2.7a5.4 5.4 0 0 0 9.8 0c.5.8.7 1.7.7 2.7a5.6 5.6 0 0 1-5.6 5.6z" fill="#ffd166" opacity=".9"/></svg><b id="streakX">x1.25</b><span id="streakN">Streak 2</span></div>
       </div>
-      <div id="streak" class="streak"><svg viewBox="0 0 24 24" class="streak-ic"><path d="M12 2.5c1.2 3.2 4.8 5.2 4.8 9.6A4.8 4.8 0 0 1 7.2 12c0-1.6.7-2.9 1.6-3.9.2 1.5 1 2.5 2.1 2.9C10.4 7.9 11 5 12 2.5z" fill="#fff3a8" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><path d="M12 21.5a5.6 5.6 0 0 1-5.6-5.6c0-1 .2-1.9.7-2.7a5.4 5.4 0 0 0 9.8 0c.5.8.7 1.7.7 2.7a5.6 5.6 0 0 1-5.6 5.6z" fill="#ffd166" opacity=".9"/></svg><b id="streakX">x1.25</b><span id="streakN">Streak 2</span></div>
       <button id="pauseBtn" class="round-btn" aria-label="Pause">
         <svg viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="2"/><rect x="13.5" y="5" width="4" height="14" rx="2"/></svg>
       </button>
-      <!-- the recipe of the level: what to bake -->
-      <div id="goalChip" class="goal-chip hidden">
-        <canvas id="goalIcon" width="56" height="56"></canvas>
-        <div class="goal-text"><div class="goal-kicker" id="goalKicker">Level 1 · bake the</div><div class="goal-name" id="goalName">???</div></div>
+      <!-- the recipe of the level: what to bake, and how many flicks the stars allow (placed between the pill and the
+           pause button by UI.placeTop, so it never runs under them) -->
+      <div id="goalWrap" class="goal-wrap hidden">
+        <div id="goalChip" class="goal-chip">
+          <canvas id="goalIcon" width="56" height="56"></canvas>
+          <div class="goal-text">
+            <div class="goal-kicker" id="goalKicker">Level 1 · bake the</div>
+            <div class="goal-name" id="goalName">???</div>
+            <div class="goal-par" id="goalPar"><span class="par-stars" id="parStars"></span><span class="par-count" id="parCount">0/6</span><span class="par-word" id="parWord">flicks</span></div>
+          </div>
+        </div>
       </div>
       <button id="nextBtn" class="next-bubble" aria-label="Swap with next cake">
         <canvas id="nextCanvas" width="64" height="64"></canvas>
@@ -171,7 +179,9 @@
       <div class="card won-card">
         <h2 class="won-title">Level clear!</h2>
         <div class="won-stars" id="wonStars"></div>
-        <div class="won-score"><span>Score</span><b id="wonScore">0</b><small id="wonBest"></small></div>
+        <div class="won-flicks"><span>Baked in</span><b id="wonFlicks">0</b><span id="wonFlicksWord">flicks</span><small id="wonBest"></small></div>
+        <div class="won-next" id="wonHint"></div>
+        <div class="won-score"><span>Score</span><b id="wonScore">0</b></div>
         <div class="won-cake">
           <canvas id="wonIcon" width="140" height="140"></canvas>
           <div class="won-cake-text">
@@ -213,7 +223,8 @@
           <div class="step-text"><b>Keep the ring clear.</b> A cake resting outside the ring for 5 seconds overflows the pond. Merge to make room!</div>
         </div>
         <div class="tips">
-          <div><b>Levels:</b> every level is a recipe – bake the cake on the card. Stars come from your score at that moment. Clear level 5 of a world to open the next one.</div>
+          <div><b>Levels:</b> every level is a recipe – bake the cake on the card. ★ for baking it, ★★ and ★★★ for baking it in few flicks: the card and the top of the screen show how many. Clear level 5 of a world to open the next one.</div>
+          <div><b>Worlds:</b> every world's water has a mood of its own – the autumn wind, the moon tide, the high winds …</div>
           <div><b>Cake Book:</b> every world bakes its own eleven cakes, and rare finds drift into the sling now and then. Merge a rare one to add it to the book.</div>
           <div><b>Orders:</b> each stage asks for a number of merges. Fill it and the pond whirls: the pile is shuffled, fresh cakes tumble in, your multiplier rises, a gift arrives.</div>
           <div><b>Hot streak:</b> merge with every flick to multiply your points.</div>
@@ -279,7 +290,7 @@
         <div class="over-stats">
           <div class="stat"><canvas id="overCake" width="80" height="80"></canvas><div><small>Biggest cake baked</small><b id="overCakeName"></b></div></div>
           <div class="stat-row">
-            <div><small>Stage</small><b id="overLevel">1</b></div>
+            <div><small id="overLevelWord">Stage</small><b id="overLevel">1</b></div>
             <div><small>Merges</small><b id="overMerges">0</b></div>
             <div><small>Best combo</small><b id="overCombo">0</b></div>
           </div>
@@ -308,6 +319,7 @@
   <script src="js/cakes.js"></script>
   <script src="js/levels.js"></script>
   <script src="js/scene.js"></script>
+  <script src="js/ambient.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/game.js"></script>

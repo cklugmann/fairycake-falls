@@ -213,8 +213,10 @@
         const size = Math.max(13, Math.min(46, p.size * s * 3.2)) * sc;
         const f = size / p.spr.size;
         const w = p.spr.c.width * f, h = p.spr.c.height * f;
+        // a long popup near the rim stays on screen (a phone is narrower than the pond)
+        const x = S.W > w + 12 ? Math.max(w / 2 + 6, Math.min(S.W - w / 2 - 6, q.x)) : q.x;
         ctx.globalAlpha = a;
-        ctx.drawImage(p.spr.c, q.x - w / 2, q.y - size * 0.66, w, h);
+        ctx.drawImage(p.spr.c, x - w / 2, q.y - size * 0.66, w, h);
       }
       ctx.globalAlpha = 1;
     },

@@ -1,4 +1,4 @@
-# Fairycake Falls – Game Design (prototype v0.7)
+# Fairycake Falls – Game Design (prototype v0.8)
 
 ## Pitch
 A cosy flick-and-merge game about *collecting cakes*. You flick cakes from a little slingshot
@@ -10,6 +10,178 @@ cake you bake for the first time goes into the Cake Book with its name, its stor
 floats up from the bottom. You *pull back and flick*, Golf-With-Your-Friends
 style, into a loose cluster of cakes floating in a pond with a current of its own.
 Bank shots, rides on the current, knock-ons and chain reactions replace the dropping column.
+
+## Design goal for v0.8: stars for a neat bake, a smoother climb, cakes and worlds you can tell apart
+Feedback from the first players (the game runs on GitHub Pages), checked against the code and the bot:
+
+1. **"You are punished for finishing a level fast."** True: the stars came from the score at the moment of the bake.
+   A quick bake had fewer points, fewer orders, a lower stage multiplier. Measured on Blossom Falls level 2 (careful bot):
+   the three-flick bakes got ★, the six-flick bakes ★★★.
+2. **"The progression is lumpy, and partly too easy."** Every world repeated the same eight start clusters. The careful
+   bot needed 2, 5, 8, 6, 23, 28, 40 and 40 flicks: a dip at level 4, a fourfold jump to level 5, and nothing grew from
+   world to world – some later worlds were even *easier* than earlier ones (Starfall handed out three Wands).
+3. **"Many green cakes in one level that I could not tell apart."** Starfall's Dragon Egg, Aurora and Mermaid Pearl were
+   teal drums of nearly the same size (tiers 6–8). The book's grid showed more near-copies across worlds.
+4. **"The autumn theme is too subtle."** Candy Woods was a mint palette swap of Blossom Falls, and Rainbow Heights looked
+   like Blossom Falls too. The night world showed how much a real change of look does.
+5. **Bugs.** The overflow countdown disappeared under cakes (it was drawn before them). The recipe chip's text slipped
+   out on phones (centred with a max-width in vw, its flex text could not shrink, and it ran under the score pill).
+
+### Stars count flicks
+★ bake the cake, ★★ bake it within N flicks, ★★★ within fewer (`PAR[w][l]` in `levels.js`: [flicks for ★★, flicks for
+★★★]). A flick counts at its launch, so the flick that bakes the cake still counts for the stars shown while it flies.
+Everything shows it:
+- **The level card:** "★ bake it · ★★ in 14 flicks · ★★★ in 9 flicks", and the fewest flicks so far.
+- **The recipe chip at the top:** a star meter, "★★★ 4/9". A star that slips away falls off with a little sound.
+- **The clear card:** "Baked in 7 flicks", what the next star would take, or "Perfect bake!". One chime per star.
+- **The record per level** is the fewest flicks.
+
+The score stays (combos, streaks and the stage multiplier are still fun to watch) but decides nothing in a level. It
+wears a sparkle instead of a star now, so it is not mistaken for the level's stars.
+
+### A climb over forty levels
+What sets the length of a level is its **build**, the highest rung the player has to assemble from small cakes, and the
+**crowd** of big cakes round it. Measured with the bot: a tier-6 build takes ~9–20 flicks, a tier-7 build ~20–30, and
+four giant cakes in the pool (levels 7 and 8) push either to ~35–45, because there is so little room left to build in.
+So every world climbs the same way and the later worlds ask a little more on the way up:
+- Levels 1–3 are short everywhere. Level 1 is a **trick shot**: one well-placed flick sets off the start cluster's whole
+  cascade (a tip says so). Levels 2 and 3 need two to four flicks: a breather after the last castle, and a first taste
+  of the new world's water.
+- Level 4 is the first real recipe: ~9 flicks in Blossom Falls, ~12 from Candy Woods on (a 5 instead of a 6 to start).
+- Levels 5–6 build tier 6 in Blossom Falls and Candy Woods and tier 7 from Moonlight Bay on (~17–30 flicks).
+- Levels 7–8, the castle, are the boss levels (~35–45 flicks) with two and three Wands. Level 8 builds tier 7 in every
+  world. They may bite: the careful bot overflows in about one castle game in four, as in v0.7 (see the table). The
+  castle is never needed to go on – the next world opens after level 5.
+
+The length now grows inside a world (it restarts small in the next one), and the water mood grows over all five worlds.
+v0.7 had the same eight clusters in every world, a fourfold jump between levels 4 and 5, and later worlds that were
+*easier* than earlier ones.
+
+<!-- measured-levels -->
+Measured (`tools/bot.js`, BOT_FAST, careful bot at skill 0.85, 8–40 games per start cluster; levels with the same
+cluster are pooled). Each cell: the start cluster (the big cakes, + the number of small ones) · the median flicks of
+the games the bot won · flicks for ★★ / ★★★ (`PAR`). The castles were measured again with the final gifts and Wand
+rule; "lost" counts overflows. ★★★ = round(1.35 × median + 0.5), ★★ = round(1.7 × p75 + 1), never fewer than the
+level before in the same world. People need more flicks than the bot (it sees a look-ahead), so ★★★ asks for a
+good game and ★★ leaves room for misses.
+
+| Level · goal | Blossom Falls | Candy Woods | Moonlight Bay | Rainbow Heights | Starfall Realm |
+| --- | --- | --- | --- | --- | --- |
+| 1 · tier 4 | 3 +6 · 1 · 6/3 | 3 +6 · 1 · 4/2 | 3 +6 · 1 · 4/2 | 3 +6 · 1 · 4/2 | 3 +6 · 1 · 4/2 |
+| 2 · tier 5 | 3 +6 · 2.5 · 6/4 | 3 +6 · 2.5 · 6/4 | 3 +6 · 2.5 · 6/4 | 3 +6 · 2.5 · 6/4 | 3 +6 · 2.5 · 6/4 |
+| 3 · tier 6 | 4 +6 · 4 · 10/6 | 4 +6 · 4 · 10/6 | 4 +6 · 4 · 10/6 | 4 +6 · 4 · 10/6 | 4 +6 · 4 · 10/6 |
+| 4 · tier 7 | 6 3 +6 · 8.5 · 19/12 | 5 3 +6 · 11.5 · 23/16 | 5 3 +6 · 11.5 · 23/16 | 5 3 +6 · 11.5 · 23/16 | 5 3 +6 · 11.5 · 23/16 |
+| 5 · tier 8 | 7 6 +6 · 16.5 · 34/23 | 7 6 +5 · 19 · 44/26 | 7 5 4 +6 · 19 · 38/26 | 7 5 4 +5 · 17.5 · 38/24 | 7 5 3 +6 · 26 · 47/36 |
+| 6 · tier 9 | 8 7 6 +5 · 21 · 57/29 | 8 7 6 +4 · 19 · 50/26 | 8 7 5 4 +5 · 27 · 59/37 | 8 7 5 4 +4 · 22.5 · 61/31 | 8 7 5 3 +5 · 29.5 · 58/40 |
+| 7 · tier 10 | 9 8 7 6 4 +4 · 37.5 · 69/51 | 9 8 7 6 4 +3 · 39 · 75/53 | 9 8 7 5 4 +4 · 37 (3/16 lost) · 71/50 | 9 8 7 5 4 +3 · 38 (1/16 lost) · 72/52 | 9 8 7 5 3 +4 · 37 · 69/50 |
+| 8 · tier 11 | 10 9 8 7 5 4 +3 · 40.5 (3/12 lost) · 75/55 | 10 9 8 7 5 4 +3 · 40.5 (0/8 lost) · 75/55 | 10 9 8 7 5 4 +4 · 39.5 (3/8 lost) · 73/54 | 10 9 8 7 5 4 +3 · 40.5 (2/8 lost) · 75/55 | 10 9 8 7 5 3 +4 · 36 (2/8 lost) · 69/50 |
+<!-- /measured-levels -->
+
+Small start clusters follow the layout's limits: at most three cakes of a small tier, and a separator in the middle. With
+more, `setupStart` could not keep the twins apart and fell back to the five-cake cross. `tools/check-levels.js` checks
+all 40 starts: tries, fallbacks, self-merges, reach and fill.
+
+### A water mood per world
+`WORLD_MOODS` gives each world a mood that grows from level 1 to level 8:
+- **Autumn wind** (Candy Woods): the rim current runs ×1.1 → 1.24, so soft flicks ride further.
+- **Moon tide** (Moonlight Bay): the calm pool breathes ±24 → 40 u every 18 s and turns a little faster (×1.05 → 1.12).
+  A faint dotted line marks low water, and the tide stands still during the whirl and after the bake.
+- **High winds** (Rainbow Heights): the pool turns ×1.25 → 1.45, the rim ×1.05 → 1.12.
+- **Starfall rapids** (Starfall Realm): all three, a little milder each (rim ×1.12 → 1.24, turn ×1.12 → 1.28, tide
+  ±14 → 26 u).
+
+The top of each range is a little lower than first planned, after measuring the castles (the water adds up with four
+giant cakes in the pool).
+
+A few levels add a twist on top (Honey current, Spring tide, Rich pantry …). Gifts are the same in every world: two Wands
+in level 7, three in level 8 (v0.7: one and two), and one in Blossom Falls level 5 to introduce the Wand. The opening
+banner and the level card name the day's water and the gift ("Castle gift").
+
+**The Wand spares the recipe.** In a level, the Wand leaves the two cakes right below the goal alone (the castle's 9 and
+10; never anything smaller than a Peach Cake): the cake looks worried, says "The recipe needs me!", and the Wand stays
+ready for another cake (if a smaller cake peeks out behind the giant right where the finger is, the Wand takes that
+one). Before, a player (and the bot) in a panic poofed the castle's 9 or 10 that was drifting out, and
+the level played on for dozens of flicks with a goal nobody could bake any more. Now such a castle ends at once, which
+is honest: the overflow is the loss, not the Wand. A 7 or an 8 can still be poofed: a costly rescue (it has to be baked
+again), not a dead end. A first version spared everything from tier 7 up; the bot then lost four of eight Candy Woods
+castles (none with the final rule), because a 7 or an 8 drifting out could no longer be saved. In Endless Pond every
+cake can be poofed.
+
+### Cakes you cannot mistake for each other
+"Same size merges" was readable for macarons, cupcakes and tarts, but tiers 2 and 5–8 were the same drum in five
+sizes. A player had to compare sizes, and colour was the only other help, which failed whenever a world gave two of
+them similar frosting. Now every tier has a silhouette of its own, the same in every world, so "same shape = same size
+= they merge" reads without measuring:
+
+| Tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Shape | macaron | petit four (a fondant cube in a paper case) | cupcake | tart | drip cake | bundt (fluted ring, glaze tongues, something in the hole) | dome | charlotte (a fence of fingers, wafers, meringue or shells, a ribbon bow) | layer cake (taller) | winged two-tier torte | crowned royal cake |
+
+The Magic Cake is a rainbow swirl on a gold plate now. The Pixie Pop is a heart on a stick.
+
+Inside a world every tier has its own colour family, with real light/dark contrast. The toppers grew bolder: an apple
+rose on the crumble tart, a witch's hat in the potion bundt, a golden egg in the dragon's nest, a music note on the
+opera bundt. Near-copies across the book were split up: Sapphire vs Blueberry, Unicorn vs Cotton Candy, Empress vs
+Crown, Brûlée vs Apple Crumble, Birthday vs Cherry Bite, Stardust vs Golden Macaron. Dark cakes get light rims around
+their eyes so their faces stay readable.
+
+`tools/cakecheck.js` renders every cake at its size on a phone and measures what a player would confuse: the overlap
+of the outlines at the same footprint and the CIEDE2000 distance between the mean and the dominant colours. It checks
+every pair that can meet in one pond (a world's eleven cakes, the rare finds, the Magic Cake), and the same tier
+across worlds for the book. Before: 98 risky pairs. Now: none flagged. 32 warnings remain, all same-tier cakes of
+different worlds; they never meet in a pond since endless mode re-dresses its cakes. `tools/cakesheet.html` shows a
+phone-scale pond strip under every world.
+
+### Five worlds that look like five places
+The night world worked because the whole light changed, not just a few colours. Every world now gets that kind of
+change: a palette of its own in `tools/gen.js` (some painters gained options for it: autumn trees, pumpkins and leaf
+litter, cloud-puff bushes, marble cliffs, a double rainbow in the far layer) and a life of its own in the new
+`js/ambient.js`.
+- **Blossom Falls:** spring morning, the painted art as before. Cherry petals drift down (on the title screen too),
+  butterflies flutter over the far bank, and petals ride the current.
+- **Candy Woods:** autumn at golden hour.
+  - Painted: a rose-to-honey sky with a low sun and rays, red, orange and gold maple trees with leaf piles and pumpkins
+    at their feet, a golden meadow strewn with leaves, toadstools, red ivy on caramel cliffs, rust roofs on cream walls,
+    and deep teal water so the cakes stand out.
+  - Animated: maple leaves tumble down in gusts (calm, then a gust), birds head south now and then, and leaves ride
+    the current.
+- **Moonlight Bay:** night, the painted art as before. Fireflies round the banks, a moonlit glitter path on the pond,
+  now and then a shooting star, and twinkling stars on the current.
+- **Rainbow Heights:** a sky kingdom.
+  - Painted: a deep blue sky with a double rainbow over a white-and-gold castle, cloud-white ground with cloud-puff
+    bushes, lavender marble cliffs with gold veins, cotton-candy trees in six pastel colours, and azure water.
+  - Animated: hot-air balloons and quick cloud wisps far away, sparkles running along the rainbow, prism glints and
+    rainbow sprinkles on the water, soap bubbles at the sides.
+- **Starfall Realm:** legendary dusk.
+  - Painted: a deeper starry sky, mint-teal grass, gold and violet trees, violet castle roofs, violet water.
+  - Animated: two aurora curtains waving over the castle, shooting stars, rising golden motes, gold stars twinkling on
+    the water and drifting with the current.
+
+All of it is drawn from small sprites painted once per pixel ratio, with counts capped and scaled to the screen. Anything
+that crosses the pond or the sling fades to about 30 %, so it never hides a cake or muddles the aim. In endless mode
+the effects of the two worlds cross-fade along with the scene. The effects cost about 0.35 ms per frame at most
+(Starfall).
+
+### The overflow stopwatch
+The countdown is drawn after everything else on the canvas: cakes, the front bank, the particles and the cloud sea are
+all below it. It is a big stopwatch over the cake (crown and buttons, a ring that runs down, the seconds in the middle)
+with a tail pointing at the cake. A red halo pulses round the cake's foot on the water. The stopwatch eases after its
+cake and stays on screen, below the HUD's top row (and below the hot-streak badge while a streak runs). It pulses, bumps
+on every second and shakes in the last two. Leaving the level clears it at once.
+
+### The HUD's top row
+`UI.placeTop` measures the score pill and the pause button and puts the recipe chip exactly into the gap between them,
+centred on the screen when there is room. The chip's text can shrink and the name wraps onto a second line. On narrow
+phones the chip drops "· bake the" and the word "flicks" (and "Almost! One merge to go" becomes "Almost!"); on the
+smallest ones (`.tight`, about 320–340 px) the icon, the stars and the count shrink a little so "54/55" still fits.
+The hot-streak badge hangs from the score pill now (it used to sit where the chip is). The coach card and the discovery
+toast start below the measured row. On short phones the clear card tightens (smaller cake, two lines of lore) so its
+buttons stay on screen.
+
+### Endless Pond: one menu at a time
+When the island drifts into the next world, every cake in the pond and in the queue changes into that world's cake of
+its size (a sparkle, a happy face). Before, cakes of two worlds floated side by side, and a Blossom Cake merged with a
+Toadstool Cake. Now "same look = same size" holds everywhere.
 
 ## Design goal for v0.7: a collection, worlds and levels
 v0.6 was a tuned endless game with one ladder of eleven cakes. The drawing board (`drawing_board/`: the first
@@ -39,7 +211,7 @@ The pieces, and why they are shaped this way:
   Big cakes are packed in the middle, small ones round them, never next to a twin (`setupStart` in `game.js`:
   a ring layout with a backtracking colouring for small clusters, a greedy packing for big ones, and a repair step
   that swaps twins the water has pressed together).
-- **Stars from the score at the moment the goal is baked.** Combos, streaks and stage multipliers are where the skill
+- **Stars from the score at the moment the goal is baked** (replaced in v0.8: stars count flicks, see above). Combos, streaks and stage multipliers are where the skill
   is; the thresholds (`STARS` in `levels.js`) come from the careful bot's median score per level (★★ ≈ 45 %,
   ★★★ ≈ 85 % of it – the bot sees a look-ahead humans do not, but a person takes more flicks, fills more orders and
   so plays with a higher stage multiplier). The score is taken when the clear card appears, so the chain that bakes
@@ -82,7 +254,7 @@ The pieces, and why they are shaped this way:
 | Rainbow Heights · The Royal Dessert Kingdom | clouds, gold, crystal, spun sugar | Cloud Macaron, Sunrise Bite, Cotton Candy Cupcake, Crème Brûlée Tart, Coconut Snow Cake, Opera Cake, Rosewater Cake, Pavlova Cloud, Crystal Cake, Starlight Tower, Fairy Queen's Crown Cake |
 | Starfall Realm · The Legendary Fairy Realms | dragons, unicorns, the aurora | Stardust Macaron, Dragonfruit Bite, Unicorn Cupcake, Phoenix Tart, Sugarplum Cake, Dragon Egg Cake, Aurora Cake, Mermaid Pearl Cake, World Tree Cake, Wishing Torte, Fairy Empress Cake |
 
-### Levels (the same recipe structure in every world; the mood of the water and the gifts differ)
+### Levels in v0.7 (the same recipe structure in every world; replaced in v0.8, see above)
 | Level | Goal tier | Start cluster (big cakes first) | Merges to the goal (model) | Careful bot: flicks · score at the clear (median of 4) |
 | ---: | ---: | --- | ---: | --- |
 | 1 | 4 | 2 1 2 1 2 1 · 5 6 | 2 | 3 · 41 |
@@ -308,17 +480,17 @@ The tiers are the sizes (the Blossom Falls menu is given as the example; every w
 | Tier | Silhouette | Blossom Falls | Radius* | Points when created |
 | ---: | --- | --- | ---: | ---: |
 | 1 | macaron | Lilac Macaron | 74 | – |
-| 2 | small drum (bite) | Cherry Bite | 88 | 2 |
+| 2 | petit four (v0.8; a small drum before) | Cherry Bite | 88 | 2 |
 | 3 | cupcake | Strawberry Cupcake | 103 | 6 |
 | 4 | tart | Lemon Tart | 119 | 12 |
-| 5 | drum | Blossom Cake | 136 | 20 |
-| 6 | drum | Choco Cake | 154 | 30 |
-| 7 | drum | Peach Cake | 173 | 42 |
-| 8 | drum | Blueberry Cake | 193 | 56 |
+| 5 | drip cake | Blossom Cake | 136 | 20 |
+| 6 | bundt (v0.8; tiers 5–8 were one drum in four sizes) | Choco Cake | 154 | 30 |
+| 7 | dome | Peach Cake | 173 | 42 |
+| 8 | charlotte | Blueberry Cake | 193 | 56 |
 | 9 | six-layer cake | Rainbow Cake | 214 | 72 |
 | 10 | winged two-tier torte | Fairy Torte | 236 | 90 |
 | 11 | crowned three-tier royal cake | Royal Fairycake | 259 | 110 |
-| – | the joker | Magic Cake (power-up) | 80 | upgrade of the touched cake |
+| – | the joker (a rainbow swirl) | Magic Cake (power-up) | 80 | upgrade of the touched cake |
 
 \*World units; the pond radius is 1000. (v0.5 radii were 69 … 430; see the v0.6 notes for why the ladder is flatter now.)
 
@@ -335,7 +507,7 @@ The tiers are the sizes (the Blossom Falls menu is given as the example; every w
 
 ## Power-ups and bonuses
 - **Magic Cake:** turns your next cake into a rainbow joker that upgrades the first cake it touches.
-- **Wand:** tap a cake to make it disappear, or tap the water to cancel. This is your emergency save when the ring is in danger (also right after a whirl that left the pond too full).
+- **Wand:** tap a cake to make it disappear, or tap the water to cancel. This is your emergency save when the ring is in danger (also right after a whirl that left the pond too full). In a level it spares the two cakes right below the goal, the recipe (since v0.8).
 - **Swap:** tap "Next" to exchange the current and next cake. Swapping is free.
 - **Fairy Bubble:** a bubble appears every 14–22 shots and stays for 16 s. Hitting it gives a Magic Cake, a Wand or 60 points.
 
@@ -376,7 +548,7 @@ one cake of every tier 1–11 reaches 94–100 % of the Royal's ring (848).
 - **One style.** The cakes set the style: rounded shapes, soft gradients, gentle outlines in a darker shade of each colour, and light from the top left. The whole world uses that same vocabulary. Distant layers fade towards the sky colour.
 - **Cakes** are drawn procedurally at runtime, so they stay crisp at every size and their faces blink, look at the sling and react with joy, worry or sadness.
 - **Sling:** two candy-stick posts with a pink ribbon at the front of the pond. Tilly floats beside it and the "Next" bubble sits on the other side. After each flick, the next cake hops from the bubble into the sling.
-- **Backgrounds** are pre-painted WebP layers: sky, castle island, side islands, main island (back and front), cloud sea and cloud puffs, for four worlds. The deterministic generator in `tools/` produces them. At runtime the layers are composed once per screen size, and only the moving parts (waterfalls, water glints, the whirlpool arms, drifting clouds, sparkles) are animated. The whirlpool arms turn at exactly the physics rate.
+- **Backgrounds** are pre-painted WebP layers: sky, castle island, side islands, main island (back and front), cloud sea and cloud puffs, for five worlds. The deterministic generator in `tools/` produces them. At runtime the layers are composed once per screen size, and only the moving parts (waterfalls, water glints, the whirlpool arms, drifting clouds, sparkles, and since v0.8 each world's weather from `js/ambient.js`) are animated. The whirlpool arms turn at exactly the physics rate.
 
 ## Audio
 Everything is synthesised with Web Audio (`js/audio.js`), no audio files.
@@ -441,13 +613,13 @@ Music and sound can be toggled separately in the pause menu. Mix (offline render
   - hit-stop and the neighbour nudge (`mergeBodies` in physics), the streak in `streakMult` / `updatePending`
   - combo window, bubble interval and power-up rewards
   - foam / streak counts (`FOAM_N`, `STREAK_N`), tutorial texts and timing (`updateCoach`)
-- **`js/levels.js`:** the start cluster of every level (`STARTS`), the star thresholds (`STARS`), the moods and gifts (`MODS`), the world-unlock rule (`UNLOCK_AT`)
+- **`js/levels.js`:** the start cluster of every level (`STARTS[w][l]`), the flicks for ★★ and ★★★ (`PAR[w][l]`), the water mood of every world (`WORLD_MOODS`), the level twists and gifts (`MODS`, `BASE_GIFTS`), the world-unlock rule (`UNLOCK_AT`); the tide's period is `TIDE_PERIOD` in `game.js`
 - **`js/cakes.js`:** tier radii (`TIERS`), every cake's look, name and lore (`KINDS`), the menus (`WORLD_MENUS`); `RARE_P` in `game.js` is the rare-find chance
 - **`js/scene.js`:** layout and the arena size on screen.
 
 ## Ideas for the next iteration
-- Playtest the adventure by feel on a phone: are levels 1–3 too quick, are 6–8 too long? Tune `STARTS` (the gap in the ladder
-  decides the length) and `STARS` from that; the bot's LEVEL line (`node tools/bot.js 4 400 1 w.l`) is the yardstick.
+- Playtest the adventure by feel on a phone: do the flick limits feel fair? Tune `PAR` from that (people need about 1.5× the
+  flicks of the BOT_FAST bot); `STARTS` set the length (the build tier decides it), the bot's LEVEL line is the yardstick.
 - Side orders on the level card ("bake two Honey Bites", "a 4-chain") as an alternative route to the third star.
 - A bonus level per world after all eight are cleared (a cascade level with a complete ladder as a fireworks finale).
 - A few more rare finds, and one "legendary" rare per world that only spawns there.
@@ -456,7 +628,7 @@ Music and sound can be toggled separately in the pause menu. Mix (offline render
 - A third slot in the queue ("after next") for planning chains.
 - Playtest the guided first game with people who have never seen it, and measure time-to-first-merge and time-to-first-ride.
 - Calibrate the cluster by feel on a phone: `MASS_EXP`, `SPACE`, `FRICTION`, `INFLOW_MIN` decide how much a hit stirs things up.
-- Water with moods per world: a stronger current in Candy Woods, a pulsing tide in Moonlight Bay, two eddies in Rainbow Heights.
+- More water moods: two eddies, a whirlpool that wanders (the per-world moods of v0.8 are the start).
 - Cakes going over the falls: an open lip at the front where a hard-knocked cake can be lost for good.
 - Orders with flavour: "3 Cupcakes", "a Blossom Cake" as optional side quests with a bonus, next to the merge count.
 - Goals per world (e.g. "make two Fairy Tortes") and a daily challenge with a fixed seed

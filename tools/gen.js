@@ -28,19 +28,23 @@
       castle: { wall: '#fff8fb', shade: '#e6cbe0', roof: '#ff95c3', roofShade: '#cc6399', window: '#a65a8c', gold: '#ffd56a' },
     },
     {
-      key: 'candy', name: 'Candy Woods',
-      sky: [[0, '#86dbd6'], [0.42, '#c5eed9'], [0.72, '#f5f1cd'], [1, '#ffe3cf']], sun: '#fffbe2', sunX: 0.78, rays: 0.07,
-      cloud: { light: '#ffffff', mid: '#f8fcf3', shade: '#ddeee4', deep: '#b3d5c6' },
-      fade: '#cdeee0',
-      grass: { hi: '#d6f7a8', light: '#a2e07c', mid: '#6cc463', dark: '#45a050', deep: '#2f8545', line: '#25643a' },
-      rock: { hi: '#ffeef3', light: '#f6cfda', mid: '#e3a7ba', dark: '#c27f97', deep: '#8e5470', line: '#6a3a55' },
-      water: { hi: '#f2fffc', light: '#b8f6e7', mid: '#5fd3c9', deep: '#2b9aa6', far: '#227f8e' },
-      fall: { light: '#ffffff', mid: '#d2fbf1', dark: '#8fe3d4' },
-      leaf: { hi: '#d6f6ac', light: '#a6e07e', mid: '#6cc25e', dark: '#3f8e48', line: '#27613a' },
-      blossom: { hi: '#fff7ec', light: '#ffe0bc', mid: '#ffbe88', dark: '#ec955e', line: '#b0603a' },
-      bark: { light: '#a9806a', dark: '#5a3e33' },
-      flowers: ['#ffffff', '#ff8fb8', '#ffd66b', '#8fd8ff', '#ffc2a8'],
-      castle: { wall: '#fffaf1', shade: '#e3d5c4', roof: '#7fd0b9', roofShade: '#4e9d87', window: '#4f8a7a', gold: '#ffd56a' },
+      // autumn at golden hour: a rose-to-honey sky with a low sun, maples in red, orange and gold, a golden meadow
+      // strewn with leaves and pumpkins, caramel cliffs – and deep teal water, so that every cake still stands out
+      key: 'candy', name: 'Candy Woods', litter: true,
+      sky: [[0, '#eea0b8'], [0.34, '#ffba98'], [0.66, '#ffd99c'], [1, '#fff0c8']], sun: '#fff0c0', sunX: 0.7, sunY: 0.3, rays: 0.11, rayDir: 1.95,
+      cloud: { light: '#fff8ee', mid: '#ffe9d4', shade: '#f6c9a9', deep: '#dc9c84' },
+      fade: '#f2c4a4',
+      grass: { hi: '#fdeaa4', light: '#f0d27a', mid: '#d9b45a', dark: '#b18d44', deep: '#8a6a37', line: '#5e4528' },
+      rock: { hi: '#ffe4c2', light: '#eebe8c', mid: '#d29462', dark: '#a76a44', deep: '#774733', line: '#523024' },
+      water: { hi: '#e8fff8', light: '#93ded0', mid: '#3ea79f', deep: '#207a7d', far: '#175f6a' },
+      fall: { light: '#ffffff', mid: '#d6f6ee', dark: '#90d4c7' },
+      leaf: { hi: '#ffd996', light: '#ffae54', mid: '#f2802f', dark: '#c85a22', line: '#8a3618' },
+      blossom: { hi: '#ffc2ae', light: '#ff8466', mid: '#e8503c', dark: '#b6332f', line: '#7a1f23' },
+      gold: { hi: '#fff3b2', light: '#ffd65c', mid: '#f2b232', dark: '#c78620', line: '#8a5414' },
+      bark: { light: '#a8795a', dark: '#563424' },
+      flowers: ['#fff3d6', '#ffcf5a', '#ff9a4a', '#e8563f', '#c58ae0'],
+      castle: { wall: '#fff3e0', shade: '#e6c59e', roof: '#da5a30', roofShade: '#9c3520', window: '#8a4628', gold: '#ffd25a' },
+      crystals: ['#ffd27a', '#ffb27a'],
     },
     {
       key: 'moon', name: 'Moonlight Bay', stars: true, moon: true,
@@ -58,26 +62,44 @@
       castle: { wall: '#ddd4f4', shade: '#9f91c8', roof: '#7260bc', roofShade: '#4a3b8c', window: '#ffd86a', gold: '#ffd56a', lit: true },
     },
     {
-      key: 'rainbow', name: 'Rainbow Heights', rainbow: true,
-      sky: [[0, '#9db5ff'], [0.36, '#d5b4f0'], [0.66, '#ffb8c7'], [1, '#ffd6a5']], sun: '#fff2c6', sunX: 0.5, rays: 0.08,
-      cloud: { light: '#fffbf4', mid: '#fff1ea', shade: '#f4d6e4', deep: '#d9aecb' },
-      fade: '#efc7db',
-      grass: { hi: '#e6f8ab', light: '#b0e37c', mid: '#7fc75c', dark: '#56a447', deep: '#3a873b', line: '#2c6738' },
-      rock: { hi: '#fff0dc', light: '#f8d4b6', mid: '#e8b28f', dark: '#c58a70', deep: '#91594f', line: '#6a3c3c' },
-      water: { hi: '#ffffff', light: '#c3efff', mid: '#71c5ef', deep: '#3a7fc8', far: '#2f68ad' },
-      fall: { light: '#ffffff', mid: '#d6f1ff', dark: '#93cff0' },
-      leaf: { hi: '#e2f7b0', light: '#aee17f', mid: '#78c35c', dark: '#4a9446', line: '#2e6438' },
-      blossom: { hi: '#fff4ec', light: '#ffd7bf', mid: '#ffb08e', dark: '#ee8668', line: '#b0503e' },
-      bark: { light: '#a8786a', dark: '#5a3634' },
-      flowers: ['#ffffff', '#ff9fca', '#ffe27a', '#c4a8ff', '#ffb38a'],
-      castle: { wall: '#fff9f0', shade: '#ebd2c8', roof: '#ff9a80', roofShade: '#cd6656', window: '#9a5666', gold: '#ffd56a' },
+      // a bright sky kingdom above the clouds: deep blue sky, a rainbow over the castle, ground of soft cloud,
+      // marble cliffs with gold veins, cotton-candy trees in every pastel, a white and gold palace, azure water
+      key: 'rainbow', name: 'Rainbow Heights', rainbowFar: true,
+      sky: [[0, '#4ea6f5'], [0.36, '#86c8ff'], [0.68, '#cbe8ff'], [1, '#fff3da']], sun: '#ffffff', sunX: 0.24, sunY: 0.05, rays: 0.12,
+      cloud: { light: '#ffffff', mid: '#f7fbff', shade: '#dbe8fb', deep: '#aac0e8' },
+      fade: '#cfe3fb',
+      grass: { hi: '#ffffff', light: '#fdfdff', mid: '#e8f0fd', dark: '#ccd9f2', deep: '#aabbe0', line: '#8293c2' },
+      rock: { hi: '#ffffff', light: '#f2f0fd', mid: '#d9d5f1', dark: '#b4adda', deep: '#8a83ba', line: '#635d96', vein: '#ffc845' },
+      water: { hi: '#ffffff', light: '#a4e4ff', mid: '#48adf2', deep: '#2a79d4', far: '#205db6' },
+      fall: { light: '#ffffff', mid: '#def0ff', dark: '#9ac9f2' },
+      leaf: { hi: '#ffffff', light: '#ffffff', mid: '#eef3fe', dark: '#d0d9f2', line: '#95a2d2' },
+      blossom: { hi: '#fff4fa', light: '#ffd2ea', mid: '#ffa8d2', dark: '#e57fb2', line: '#b0528a' },
+      crowns: [
+        { hi: '#fff4fa', light: '#ffd2ea', mid: '#ffa8d2', dark: '#e57fb2', line: '#b0528a' },
+        { hi: '#f8f2ff', light: '#e2d2ff', mid: '#c4a8ff', dark: '#9b7fe0', line: '#6a52b0' },
+        { hi: '#f0fff8', light: '#c4f5df', mid: '#8fe3bf', dark: '#5fbf98', line: '#3a8a6a' },
+        { hi: '#fffde8', light: '#fff2a8', mid: '#ffdf5c', dark: '#e8b830', line: '#a87a14' },
+        { hi: '#f0f8ff', light: '#c8e6ff', mid: '#94caff', dark: '#62a0e8', line: '#3a6ab0' },
+        { hi: '#fff6ee', light: '#ffd9c0', mid: '#ffb48c', dark: '#ec8a64', line: '#b0563c' },
+      ],
+      bark: { light: '#e6c48e', dark: '#a87e48' },
+      flowers: ['#ff9fca', '#ffe066', '#9fe8c0', '#9fd2ff', '#c9a8ff', '#ffb38a'],
+      castle: { wall: '#ffffff', shade: '#dde2f4', roof: '#ffcf48', roofShade: '#cc9020', window: '#6c94dc', gold: '#ffe78a' },
+      crystals: ['#ffd2ef', '#cdefff', '#e6d6ff', '#d2ffe8', '#fff1a8'],
+      vine: { light: '#ecdfff', mid: '#d2bff8', dark: '#a893e2' },
     },
     {
+      // legendary dusk: a deep starry sky (the aurora waves over it at runtime), golden and violet trees, violet water
       key: 'starfall', name: 'Starfall Realm', stars: true, rays: 0.05,
-      sky: [[0, '#2a1a5e'], [0.38, '#5b3a9c'], [0.68, '#c56aa8'], [1, '#ffcf8a']], sun: '#fff0c0', sunX: 0.5,
+      sky: [[0, '#1d1350'], [0.36, '#4b2f90'], [0.66, '#b65aa3'], [1, '#ffc58a']], sun: '#fff0c0', sunX: 0.5,
+      crowns: [
+        { hi: '#fff8e0', light: '#ffe9a8', mid: '#ffcf5a', dark: '#e8a02a', line: '#a86a14' },
+        { hi: '#ffeeff', light: '#f4c0ff', mid: '#d88cf2', dark: '#aa5ecb', line: '#6c3290' },
+      ],
+      crystals: ['#ffe9a0', '#e2c4ff'],
       cloud: { light: '#fff6e8', mid: '#f6dfe6', shade: '#d8b4d6', deep: '#a985bd' },
       fade: '#b48cc4',
-      grass: { hi: '#d9f5b0', light: '#a9df8a', mid: '#75bf6c', dark: '#4f9a5e', deep: '#357a4e', line: '#245a40' },
+      grass: { hi: '#dcfff0', light: '#a8eccd', mid: '#74cfa9', dark: '#4caa87', deep: '#34876c', line: '#245e4e' },
       rock: { hi: '#fff0d6', light: '#f4d4a6', mid: '#d6a86e', dark: '#a57a4e', deep: '#6e4e3c', line: '#4a3330' },
       water: { hi: '#fff4ff', light: '#d0b8ff', mid: '#8f74e8', deep: '#4e3fb8', far: '#3b2f96' },
       fall: { light: '#ffffff', mid: '#e8dcff', dark: '#b39cf0' },
@@ -85,7 +107,7 @@
       blossom: { hi: '#fff8e0', light: '#ffe9a8', mid: '#ffcf5a', dark: '#e8a02a', line: '#a86a14' },
       bark: { light: '#a98870', dark: '#5e4442' },
       flowers: ['#ffffff', '#ffd34d', '#c9a6ff', '#ff9fd0', '#8fe3ff'],
-      castle: { wall: '#fffaf0', shade: '#e9d6c0', roof: '#c9a6ff', roofShade: '#8f6be6', window: '#ffd86a', gold: '#ffd56a', lit: true },
+      castle: { wall: '#fbf4ff', shade: '#dccbef', roof: '#8a66e0', roofShade: '#5a3ca8', window: '#ffd86a', gold: '#ffd56a', lit: true },
     },
   ];
   G.THEMES = THEMES;
@@ -103,6 +125,22 @@
     ctx.restore();
   }
   function soft(src, px) { return P.blurred(src, px); }
+
+  // which crown a tree gets: themes can list several (autumn reds, oranges and golds; rainbow pastels) –
+  // the other themes keep their old blossom-or-leaf choice (and their random sequence, so their art stays as it was)
+  function crownFor(T, r, pink) {
+    if (T.crowns) return T.crowns[Math.floor(r() * T.crowns.length)];
+    if (T.gold) { const k = r(); return k < 0.42 ? T.blossom : k < 0.78 ? T.leaf : T.gold; }
+    return pink ? T.blossom : T.leaf;
+  }
+  // autumn bushes come in orange, red and gold; everywhere else a bush is the theme's leaf colour
+  function bushFor(T, r) {
+    if (!T.gold) return T.leaf;
+    const k = r();
+    return k < 0.5 ? T.leaf : k < 0.78 ? T.blossom : T.gold;
+  }
+  G.crownFor = crownFor;
+  G.bushFor = bushFor;
 
   // ------------------------------------------------------------------
   // cloud (cartoon cumulus)
@@ -269,12 +307,14 @@
       ctx.fillStyle = g; ctx.fill();
     }
     ctx.restore();
-    // blossoms / sparkle dots
+    // blossoms / sparkle dots – or, on an autumn tree, little leaves in the crown's lighter shades
     const dots = o.dots == null ? 26 : o.dots;
+    const leafPal = o.leafy ? { light: crown.hi, mid: crown.light, dark: crown.mid, line: crown.dark } : null;
     for (let i = 0; i < dots; i++) {
       const l = lobes[Math.floor(r() * lobes.length)];
       const a = r() * TAU, rr = l.r * Math.sqrt(r()) * 0.8;
       const px = l.x + Math.cos(a) * rr, py = l.y + Math.sin(a) * rr;
+      if (leafPal) { G.fallenLeaf(ctx, px, py, s * (0.035 + r() * 0.02), leafPal, r() * TAU); continue; }
       ctx.fillStyle = r() > 0.4 ? '#ffffff' : crown.hi;
       ctx.beginPath(); ctx.arc(px, py, s * (0.012 + r() * 0.012), 0, TAU); ctx.fill();
     }
@@ -347,6 +387,63 @@
     ctx.lineWidth = Math.max(1, s * 0.07); ctx.strokeStyle = 'rgba(150,40,80,0.6)'; ctx.stroke();
     ctx.fillStyle = '#ffffff';
     for (const d of [[-0.26, -0.78, 0.09], [0.1, -0.9, 0.11], [0.3, -0.72, 0.07]]) { ctx.beginPath(); ctx.arc(x + d[0] * s, y + d[1] * s, d[2] * s, 0, TAU); ctx.fill(); }
+  };
+
+  // a maple leaf (unit size, tip up): five rounded lobes and a little stem – the autumn world's signature
+  const MAPLE = [[220, 0.3], [252, 0.64], [280, 0.44], [308, 0.92], [334, 0.47], [0, 1], [26, 0.47], [52, 0.92], [80, 0.44], [108, 0.64], [140, 0.3], [180, 0.2]];
+  G.maplePath = function (ctx, s) {
+    ctx.beginPath();
+    MAPLE.forEach((p, i) => {
+      const a = (p[0] * Math.PI) / 180, x = Math.sin(a) * p[1] * s, y = -Math.cos(a) * p[1] * s + s * 0.12;
+      if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    });
+    ctx.closePath();
+  };
+  // a fallen leaf lying in the grass (squashed by the camera tilt)
+  G.fallenLeaf = function (ctx, x, y, s, pal, rot) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, 0.62);
+    ctx.rotate(rot || 0);
+    ctx.lineJoin = 'round';
+    G.maplePath(ctx, s);
+    const g = ctx.createLinearGradient(-s, -s, s, s);
+    g.addColorStop(0, pal.light); g.addColorStop(0.6, pal.mid); g.addColorStop(1, pal.dark);
+    ctx.fillStyle = g; ctx.fill();
+    ctx.lineWidth = Math.max(0.8, s * 0.1); ctx.strokeStyle = rgba(pal.line, 0.7); ctx.stroke();
+    ctx.lineCap = 'round';
+    ctx.lineWidth = Math.max(0.6, s * 0.07); ctx.strokeStyle = rgba(pal.dark, 0.8);
+    ctx.beginPath(); ctx.moveTo(0, s * 0.45); ctx.lineTo(0, -s * 0.7); ctx.moveTo(0, 0); ctx.lineTo(-s * 0.5, -s * 0.42); ctx.moveTo(0, 0); ctx.lineTo(s * 0.5, -s * 0.42); ctx.stroke();
+    ctx.restore();
+  };
+  // a round pumpkin with a curly stem (autumn props on the banks)
+  G.pumpkin = function (ctx, x, y, s, col) {
+    const c = col || { hi: '#ffd08a', mid: '#f48a2c', dark: '#c8581a', line: '#86340f' };
+    shadowBlob(ctx, x + s * 0.08, y, s * 1.05, s * 0.3, '#4a2410', 0.4);
+    const lobes = [[-0.62, 0.3], [0.62, 0.3], [-0.32, 0.4], [0.32, 0.4], [0, 0.44]];
+    for (const l of lobes) {
+      ctx.beginPath(); ctx.ellipse(x + l[0] * s, y - s * 0.5, s * l[1], s * 0.5, 0, 0, TAU);
+      const g = ctx.createRadialGradient(x + l[0] * s - s * 0.15, y - s * 0.75, s * 0.05, x + l[0] * s, y - s * 0.45, s * 0.6);
+      g.addColorStop(0, c.hi); g.addColorStop(0.5, c.mid); g.addColorStop(1, c.dark);
+      ctx.fillStyle = g; ctx.fill();
+      ctx.lineWidth = Math.max(1, s * 0.06); ctx.strokeStyle = rgba(c.line, 0.65); ctx.stroke();
+    }
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x, y - s * 0.9); ctx.quadraticCurveTo(x + s * 0.06, y - s * 1.12, x + s * 0.2, y - s * 1.2);
+    ctx.lineWidth = s * 0.16; ctx.strokeStyle = '#6f8a32'; ctx.stroke();
+    ctx.lineWidth = s * 0.05; ctx.strokeStyle = '#8fb04a';
+    ctx.beginPath(); ctx.moveTo(x + s * 0.06, y - s * 0.98); ctx.bezierCurveTo(x - s * 0.3, y - s * 1.2, x - s * 0.4, y - s * 0.9, x - s * 0.22, y - s * 0.86); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(x - s * 0.3, y - s * 0.72, s * 0.12, s * 0.07, -0.5, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fill();
+  };
+  // a heap of fallen leaves at the foot of a tree
+  G.leafPile = function (ctx, x, y, s, T, seed) {
+    const r = P.rng(seed);
+    shadowBlob(ctx, x, y, s * 1.2, s * 0.3, T.rock.line, 0.3);
+    const pals = [T.leaf, T.blossom, T.gold || T.leaf];
+    for (let i = 0; i < 26; i++) {
+      const a = r() * TAU, rr = Math.sqrt(r());
+      G.fallenLeaf(ctx, x + Math.cos(a) * s * 1.05 * rr, y + Math.sin(a) * s * 0.32 * rr - (1 - rr) * s * 0.25, s * (0.2 + r() * 0.12), pals[Math.floor(r() * pals.length)], r() * TAU);
+    }
   };
 
   // ------------------------------------------------------------------
@@ -450,6 +547,23 @@
       ctx.stroke();
       ctx.translate(0, -Math.max(2, bb.h * 0.018));
     }
+    // gold veins through the rock (the marble cliffs of Rainbow Heights)
+    if (pal.vein) {
+      ctx.lineCap = 'round';
+      for (let k = 0; k < 4; k++) {
+        const off = (0.16 + k * 0.21 + r() * 0.05) * bb.h * 0.85;
+        const curve = (t) => o.arc ? o.arc(t, off) : bb.y + off + Math.sin(t * Math.PI) * bb.h * 0.08;
+        const ph = r() * 6;
+        ctx.beginPath();
+        for (let i = 0; i <= 64; i++) {
+          const t = i / 64;
+          const px = bb.x + t * bb.w, py = curve(t) + Math.sin(t * 15 + ph) * bb.h * 0.014;
+          if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+        }
+        ctx.lineWidth = Math.max(1.4, bb.h * 0.008); ctx.strokeStyle = rgba(pal.vein, 0.8); ctx.stroke();
+        ctx.lineWidth = Math.max(0.6, bb.h * 0.0026); ctx.strokeStyle = rgba('#ffffff', 0.75); ctx.stroke();
+      }
+    }
     // boulders
     const nb = o.boulders == null ? 10 : o.boulders;
     for (let i = 0; i < nb; i++) {
@@ -539,9 +653,15 @@
     const nbu = o.bushes == null ? 3 : o.bushes;
     for (let i = 0; i < nbu; i++) items.push({ kind: 'bush', x: x + (r() - 0.5) * w * 0.75, y: y + (r() - 0.3) * ry * 0.8, s: w * (0.09 + r() * 0.05) });
     items.sort((a, b) => a.y - b.y);
+    if (T.litter) {
+      // autumn: the little islands are strewn with leaves too, and one has a pumpkin
+      const pals = [T.leaf, T.blossom, T.gold];
+      for (let i = 0; i < 14; i++) G.fallenLeaf(ctx, x + (r() - 0.5) * w * 0.8, y + (r() - 0.5) * ry * 1.1, w * 0.022, pals[Math.floor(r() * 3)], r() * TAU);
+      if (r() > 0.4) G.pumpkin(ctx, x + (r() - 0.5) * w * 0.5, y + ry * 0.25, w * 0.05);
+    }
     for (const it of items) {
-      if (it.kind === 'tree') G.tree(ctx, it.x, it.y, it.s, { bark: T.bark, crown: it.pink ? T.blossom : T.leaf, leaf: T.leaf }, Math.floor(r() * 1e6), { dots: it.pink ? 22 : 10 });
-      else G.bush(ctx, it.x, it.y, it.s * 1.6, it.s, T.leaf, Math.floor(r() * 1e6), { flowers: { n: 4, size: it.s * 0.14, colors: T.flowers } });
+      if (it.kind === 'tree') G.tree(ctx, it.x, it.y, it.s, { bark: T.bark, crown: crownFor(T, r, it.pink), leaf: T.leaf }, Math.floor(r() * 1e6), { dots: it.pink ? 22 : 10, leafy: !!T.litter });
+      else G.bush(ctx, it.x, it.y, it.s * 1.6, it.s, bushFor(T, r), Math.floor(r() * 1e6), { flowers: { n: 4, size: it.s * 0.14, colors: T.flowers } });
     }
     return { falls };
   };
@@ -626,13 +746,14 @@
     const g = ctx.createLinearGradient(0, 0, 0, S);
     for (const st of T.sky) g.addColorStop(st[0], st[1]);
     ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
-    const sx = S * T.sunX, sy = S * 0.08;
+    const sx = S * T.sunX, sy = S * (T.sunY != null ? T.sunY : 0.08);
     P.softDab(ctx, sx, sy, S * 0.7, T.sun, T.moon ? 0.35 : 0.7, 0);
     if (!T.moon) P.softDab(ctx, sx, sy, S * 0.14, '#ffffff', 0.75, 0.25);
     if (T.rays) {
       const R = P.layer(S, S), rc = R.getContext('2d');
+      const a0 = T.rayDir != null ? T.rayDir - 0.51 : 0.3; // the fan of rays points down-right unless the theme says otherwise
       for (let i = 0; i < 7; i++) {
-        const a = 0.3 + i * 0.17 + r() * 0.05, len = S * 1.4, w = 0.025 + r() * 0.03;
+        const a = a0 + i * 0.17 + r() * 0.05, len = S * 1.4, w = 0.025 + r() * 0.03;
         rc.beginPath(); rc.moveTo(sx, sy);
         rc.lineTo(sx + Math.cos(a - w) * len, sy + Math.sin(a - w) * len);
         rc.lineTo(sx + Math.cos(a + w) * len, sy + Math.sin(a + w) * len); rc.closePath();
@@ -701,21 +822,58 @@
     const C = P.layer(W, H), ctx = C.getContext('2d');
     const r = P.rng(seed);
     const ax = W / 2, ay = 760, iw = 860;
+    let rainbow = null;
+    if (T.rainbowFar) {
+      // the rainbow of Rainbow Heights arches over the castle (painted into this layer, so it sits right behind the
+      // castle on every screen shape, and the map card shows it too)
+      const R = P.layer(W, H), rc = R.getContext('2d');
+      const rx = ax, ry = ay + 70, rad = 670, bw = 27;
+      const cols = ['#ff8aa8', '#ffb46c', '#ffe46a', '#8fe39c', '#74c2ff', '#b598ff'];
+      rc.beginPath(); rc.arc(rx, ry, rad - bw * 2.5, Math.PI, TAU);
+      rc.lineWidth = bw * 8; rc.strokeStyle = 'rgba(255,255,255,0.32)'; rc.stroke();
+      for (let i = 0; i < cols.length; i++) {
+        rc.beginPath(); rc.arc(rx, ry, rad - i * bw, Math.PI, TAU);
+        rc.lineWidth = bw + 1.5; rc.strokeStyle = cols[i]; rc.stroke();
+      }
+      // a faint second rainbow outside the first, colours reversed – as real double rainbows do
+      for (let i = 0; i < cols.length; i++) {
+        rc.beginPath(); rc.arc(rx, ry, rad + 150 + i * 14, Math.PI, TAU);
+        rc.lineWidth = 15; rc.strokeStyle = rgba(cols[cols.length - 1 - i], 0.28); rc.stroke();
+      }
+      // the feet fade into the clouds
+      rc.globalCompositeOperation = 'destination-out';
+      const fg = rc.createLinearGradient(0, ry - 340, 0, ry);
+      fg.addColorStop(0, 'rgba(0,0,0,0)'); fg.addColorStop(1, 'rgba(0,0,0,1)');
+      rc.fillStyle = fg; rc.fillRect(0, ry - 340, W, 350);
+      rc.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 0.92;
+      ctx.drawImage(P.blurred(R, 2.5), 0, 0);
+      ctx.globalAlpha = 1;
+      rainbow = { x: rx, y: ry, r: rad - bw * 2.5, w: bw * 6 };
+    }
     G.floatIsland(ctx, ax - 560, ay - 200, 230, T, seed + 1, { falls: 1, trees: 1, bushes: 1, outline: false });
     G.floatIsland(ctx, ax + 560, ay - 160, 250, T, seed + 2, { falls: 1, trees: 2, bushes: 1, outline: false });
     G.cloud(ctx, ax - 360, ay + 280, 520, 210, T.cloud, seed + 3);
     G.cloud(ctx, ax + 380, ay + 300, 540, 220, T.cloud, seed + 4);
     const isl = G.floatIsland(ctx, ax, ay, iw, T, seed + 5, { falls: 3, trees: 0, bushes: 0, depth: 0.6, outline: false });
-    G.tree(ctx, ax - iw * 0.4, ay + 12, 150, { bark: T.bark, crown: T.blossom, leaf: T.leaf }, seed + 6, { dots: 26 });
-    G.tree(ctx, ax + iw * 0.41, ay + 10, 136, { bark: T.bark, crown: T.leaf, leaf: T.leaf }, seed + 7, { dots: 10 });
+    const rr = P.rng(seed + 77);
+    G.tree(ctx, ax - iw * 0.4, ay + 12, 150, { bark: T.bark, crown: T.crowns || T.gold ? crownFor(T, rr, true) : T.blossom, leaf: T.leaf }, seed + 6, { dots: 26, leafy: !!T.litter });
+    G.tree(ctx, ax + iw * 0.41, ay + 10, 136, { bark: T.bark, crown: T.crowns || T.gold ? crownFor(T, rr, false) : T.leaf, leaf: T.leaf }, seed + 7, { dots: T.litter ? 24 : 10, leafy: !!T.litter });
+    if (T.litter) {
+      for (let i = 0; i < 22; i++) G.fallenLeaf(ctx, ax + (rr() - 0.5) * iw * 0.85, ay + (rr() - 0.2) * iw * 0.12, 13, [T.leaf, T.blossom, T.gold][Math.floor(rr() * 3)], rr() * TAU);
+      G.pumpkin(ctx, ax - iw * 0.3, ay + 40, 26);
+      G.pumpkin(ctx, ax + iw * 0.33, ay + 44, 20);
+    }
     G.castle(ctx, ax + 4, ay + 26, 600, T);
     for (const q of [[-0.25, 0.1], [0.27, 0.12], [-0.08, 0.16], [0.1, 0.17]]) {
-      G.bush(ctx, ax + q[0] * iw, ay + q[1] * iw * 0.3 + 34, 120, 62, T.leaf, seed + 40 + Math.round(q[0] * 100), { flowers: { n: 4, size: 9, colors: T.flowers } });
+      G.bush(ctx, ax + q[0] * iw, ay + q[1] * iw * 0.3 + 34, 120, 62, T.gold ? bushFor(T, rr) : T.leaf, seed + 40 + Math.round(q[0] * 100), { flowers: { n: 4, size: 9, colors: T.flowers } });
     }
     G.cloud(ctx, ax - 130, ay + 460, 680, 250, T.cloud, seed + 8);
     G.cloud(ctx, ax + 320, ay + 500, 520, 200, T.cloud, seed + 9);
     const out = P.blurred(P.tint(C, T.fade, 0.2), 0.6);
-    return { canvas: out, meta: { w: W, h: H, ax, ay, iw, top: ay - 26 - 600 * 1.26 } };
+    const meta = { w: W, h: H, ax, ay, iw, top: ay - 26 - 600 * 1.26 };
+    if (rainbow) meta.rainbow = rainbow;
+    return { canvas: out, meta };
   };
 
   // ------------------------------------------------------------------
@@ -775,6 +933,7 @@
   const mix = P.mix, rgba = P.rgba;
   const G = window.GEN;
   const K = G.K;
+  const crownFor = G.crownFor, bushFor = G.bushFor;
 
   function ell(ctx, x, y, rx, ry) { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, TAU); }
 
@@ -832,7 +991,7 @@
         items.push({ x: hx - hw * 0.44 + u * hw * 0.88 + (r() - 0.5) * 24, y: hTop + PR * (0.05 + Math.pow(Math.abs(u - 0.5) * 2, 2) * 0.16) + r() * 14, s: PR * (0.085 + r() * 0.04) });
       }
       items.sort((a, c) => a.y - c.y);
-      for (const it of items) G.bush(b, it.x, it.y + it.s * 0.55, it.s * 1.8, it.s * 1.05, T.leaf, Math.floor(r() * 1e6), { flowers: { n: 4, size: it.s * 0.13, colors: T.flowers } });
+      for (const it of items) G.bush(b, it.x, it.y + it.s * 0.55, it.s * 1.8, it.s * 1.05, bushFor(T, r), Math.floor(r() * 1e6), { flowers: { n: 4, size: it.s * 0.13, colors: T.flowers } });
     }
 
     // ---------------- cliff face ----------------
@@ -858,7 +1017,8 @@
         strata: 5, boulders: 7, lw: 5,
         arc: (t, off) => by + RO * K * Math.sin(t * Math.PI) + off * 0.85 - RO * K * 0.15,
       });
-      // hanging vines with little blossoms
+      // hanging vines with little blossoms (red ivy in autumn, pastel garlands in the sky kingdom)
+      const V = T.vine || (T.gold ? T.blossom : T.leaf);
       b.save(); b.lineCap = 'round';
       for (let i = 0; i < 26; i++) {
         const a = Math.PI * (0.08 + r() * 0.84);
@@ -867,11 +1027,11 @@
         const len = RO * (0.07 + r() * 0.2);
         b.beginPath(); b.moveTo(x, y);
         b.quadraticCurveTo(x + (r() - 0.5) * 30, y + len * 0.6, x + (r() - 0.5) * 20, y + len);
-        b.lineWidth = 4; b.strokeStyle = T.leaf.dark; b.stroke();
+        b.lineWidth = 4; b.strokeStyle = V.dark; b.stroke();
         for (let k = 1; k <= 4; k++) {
           const t = k / 4.6, lx = x + (k % 2 ? 9 : -9), ly = y + len * t;
           b.beginPath(); b.ellipse(lx, ly, 10, 6, k % 2 ? 0.6 : -0.6, 0, TAU);
-          b.fillStyle = k % 2 ? T.leaf.light : T.leaf.mid; b.fill();
+          b.fillStyle = k % 2 ? V.light : V.mid; b.fill();
         }
         if (r() > 0.45) G.flower(b, x, y + len, 9 + r() * 4, T.flowers[Math.floor(r() * T.flowers.length)], r() * TAU, true);
       }
@@ -883,7 +1043,7 @@
         if (Math.abs(x - cx) < PR * 0.25) continue;
         const y = by + RO * K * Math.sin(t * Math.PI) + RO * (0.15 + r() * 0.3);
         const s = 14 + r() * 14;
-        const col = r() > 0.5 ? '#ffd2ef' : '#cdefff';
+        const col = T.crystals ? T.crystals[Math.floor(r() * T.crystals.length)] : r() > 0.5 ? '#ffd2ef' : '#cdefff';
         b.save(); b.translate(x, y); b.rotate((r() - 0.5) * 0.5);
         for (const q of [[-0.6, 0.7], [0, 1], [0.6, 0.6]]) {
           b.beginPath(); b.moveTo(q[0] * s, -s * 2 * q[1]); b.lineTo(q[0] * s + s * 0.38, -s * 0.35); b.lineTo(q[0] * s, s * 0.3); b.lineTo(q[0] * s - s * 0.38, -s * 0.35); b.closePath();
@@ -1002,6 +1162,7 @@
     lip(b, Math.PI, TAU);
 
     // ---------------- vegetation: back half ----------------
+    const leafPals = [T.leaf, T.blossom, T.gold || T.leaf];
     const scatter = (ctx, aFrom, aTo, count, opts) => {
       for (let i = 0; i < count; i++) {
         const a = aFrom + r() * (aTo - aFrom);
@@ -1009,6 +1170,15 @@
         const rr = rin + (RO - rin) * u;
         const x = cx + Math.cos(a) * rr, y = by + Math.sin(a) * rr * K;
         const k = r();
+        if (T.litter) {
+          // autumn: the bank is carpeted with fallen maple leaves, with a few late flowers, toadstools and pumpkins
+          if (k < 0.58) G.fallenLeaf(ctx, x, y, 11 + r() * 7, leafPals[Math.floor(r() * 3)], r() * TAU);
+          else if (k < 0.7) G.flower(ctx, x, y, 8 + r() * 6, T.flowers[Math.floor(r() * T.flowers.length)], r() * TAU);
+          else if (k < 0.8) G.tuft(ctx, x, y, 12 + r() * 8, T.grass);
+          else if (k < 0.9) G.mushroom(ctx, x, y, 16 + r() * 9);
+          else G.pumpkin(ctx, x, y, 15 + r() * 9);
+          continue;
+        }
         if (k < 0.55) G.flower(ctx, x, y, 9 + r() * 7, T.flowers[Math.floor(r() * T.flowers.length)], r() * TAU);
         else if (k < 0.8) G.tuft(ctx, x, y, 12 + r() * 8, T.grass);
         else if (k < 0.92 && !(opts && opts.noStones)) G.stone(ctx, x, y, 7 + r() * 6, T.rock);
@@ -1026,19 +1196,23 @@
       const rr = RO * 0.94;
       const x = cx + Math.cos(a) * rr, y = by + Math.sin(a) * rr * K + 8;
       const s = (RO - rin) * (0.85 + r() * 0.4);
-      G.bush(b, x, y, s * 1.7, s, T.leaf, Math.floor(r() * 1e6), { flowers: r() > 0.3 ? { n: 5, size: s * 0.12, colors: T.flowers } : null });
+      G.bush(b, x, y, s * 1.7, s, bushFor(T, r), Math.floor(r() * 1e6), { flowers: r() > 0.3 ? { n: 5, size: s * 0.12, colors: T.flowers } : null });
     }
-    scatter(b, Math.PI * 1.0, Math.PI * 2.0, 70);
-    // trees at the back corners
-    for (const a of [Math.PI * 1.22, Math.PI * 1.79]) {
+    scatter(b, Math.PI * 1.0, Math.PI * 2.0, T.litter ? 95 : 70);
+    // trees at the back corners (in autumn a heap of leaves and a big pumpkin at their feet)
+    const corners = [Math.PI * 1.22, Math.PI * 1.79];
+    corners.forEach((a, i) => {
       const x = cx + Math.cos(a) * RO * 1.0, y = by + Math.sin(a) * RO * K * 1.0 + 6;
-      G.tree(b, x, y, PR * 0.42, { bark: T.bark, crown: T.blossom, leaf: T.leaf }, Math.floor(r() * 1e6), { dots: 30 });
-    }
+      if (T.litter) G.leafPile(b, x + (i ? -1 : 1) * PR * 0.05, y + 14, PR * 0.12, T, seed + 90 + i);
+      const crown = T.crowns || T.gold ? (T.gold ? [T.blossom, T.gold][i] : crownFor(T, r, true)) : T.blossom;
+      G.tree(b, x, y, PR * 0.42, { bark: T.bark, crown, leaf: T.leaf }, Math.floor(r() * 1e6), { dots: T.litter ? 46 : 30, leafy: !!T.litter });
+      if (T.litter) G.pumpkin(b, x + (i ? -1 : 1) * PR * 0.17, y + 22, PR * (i ? 0.06 : 0.075));
+    });
     // side bushes (mid height) – back layer
     for (const side of [-1, 1]) {
       const a = side < 0 ? Math.PI * 1.04 : Math.PI * 1.96;
       const x = cx + Math.cos(a) * RO * 0.92, y = by + Math.sin(a) * RO * K * 0.92 + 4;
-      G.bush(b, x, y, (RO - rin) * 1.5, (RO - rin) * 0.9, T.leaf, Math.floor(r() * 1e6), { flowers: { n: 4, size: 10, colors: T.flowers } });
+      G.bush(b, x, y, (RO - rin) * 1.5, (RO - rin) * 0.9, bushFor(T, r), Math.floor(r() * 1e6), { flowers: { n: 4, size: 10, colors: T.flowers } });
     }
 
     // ================= FRONT LAYER (near bank, drawn over the cakes) =================
@@ -1087,7 +1261,7 @@
       const rr = (rin + RO) / 2 + (RO - rin) * 0.15;
       const x = cx + Math.cos(a) * rr, y = by + Math.sin(a) * rr * K + 6;
       const s = (RO - rin) * (0.75 + r() * 0.3);
-      G.bush(f, x, y, s * 1.6, s * 0.95, T.leaf, Math.floor(r() * 1e6), { flowers: { n: 4, size: s * 0.12, colors: T.flowers } });
+      G.bush(f, x, y, s * 1.6, s * 0.95, bushFor(T, r), Math.floor(r() * 1e6), { flowers: { n: 4, size: s * 0.12, colors: T.flowers } });
     }
     for (let i = 0; i < 60; i++) {
       const a = 0.05 + r() * (Math.PI - 0.1);
@@ -1096,7 +1270,8 @@
       const rr = rin + (RO - rin) * u;
       const x = cx + Math.cos(a) * rr, y = by + Math.sin(a) * rr * K;
       const k = r();
-      if (k < 0.6) G.flower(f, x, y, 9 + r() * 7, T.flowers[Math.floor(r() * T.flowers.length)], r() * TAU);
+      if (T.litter && k < 0.62) G.fallenLeaf(f, x, y, 11 + r() * 7, leafPals[Math.floor(r() * 3)], r() * TAU);
+      else if (k < 0.6) G.flower(f, x, y, 9 + r() * 7, T.flowers[Math.floor(r() * T.flowers.length)], r() * TAU);
       else G.tuft(f, x, y, 12 + r() * 8, T.grass);
     }
     meta.cliffBottom = cliffBottom;

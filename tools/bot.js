@@ -42,14 +42,16 @@ const BOT = `
     const tier = FC.Cakes.tierOf(kind);
     const r = T[tier].r, L = G.anchorW(tier);
     let best = null, direct = 0;
-    for (let deg = -76; deg <= 76; deg += 3) {
-      for (const p of [0.18, 0.26, 0.34, 0.42, 0.5, 0.58, 0.68, 0.8, 0.92]) {
+    // BOT_FAST=1: a coarser search (6° steps, six powers) – three times quicker, and a little more human
+    const grid = window.BOT_GRID || { step: 3, powers: [0.18, 0.26, 0.34, 0.42, 0.5, 0.58, 0.68, 0.8, 0.92] };
+    for (let deg = -76; deg <= 76; deg += grid.step) {
+      for (const p of grid.powers) {
         const a = deg * Math.PI / 180, sp = P.speedForPower(p);
         const pr = W.predict(L.x, L.y, Math.sin(a) * sp, -Math.cos(a) * sp, r, tier, { maxT: 3.4, maxLen: 3000, spacing: 60 });
         let score = 0, info = null;
         if (pr.hit && !pr.hit.body.sensor) {
           if (pr.hit.body.tier === tier) direct++; // a heart in the preview: what a human sees
-          const lk = W.lookAhead(pr.hit, { tier, r }, { time: 1.1, step: 1/100, tierR: (t) => T[t].r, maxTier: 11 });
+          const lk = W.lookAhead(pr.hit, { tier, r }, { time: grid.look || 1.1, step: grid.lookStep || 1/100, tierR: (t) => T[t].r, maxTier: 11 });
           for (const ev of lk.events) score += ev.kind === 'royal' ? 50 : (ev.tier || 2) * 2;
           // penalise pushing cakes outwards
           for (const m of lk.moved) { const d1 = Math.hypot(m.x, m.y) + m.r; if (d1 > 820) score -= (d1 - 820) / 40; }
@@ -79,7 +81,7 @@ const BOT = `
       simT += waitSettle(4);
       if (G.state !== 'playing' || G.won) break;
       // wand if in danger
-      if (G.danger > 1.5 && G.wands > 0 && G.dangerBody) { G.wandMode = true; const p = FC.Scene.w2s(G.dangerBody.x, G.dangerBody.y); G.wandTap(p.x, p.y - G.dangerBody.r * FC.Scene.s * 0.45); G.update(DT); continue; }
+      if (G.danger > 1.5 && G.wands > 0 && G.dangerBody && !(G.wandSpares && G.wandSpares(G.dangerBody))) { G.wandMode = true; const p = FC.Scene.w2s(G.dangerBody.x, G.dangerBody.y); G.wandTap(p.x, p.y - G.dangerBody.r * FC.Scene.s * 0.45); G.update(DT); continue; }
       let tier = G.queue[0];
       let best = search(tier);
       let direct = best.direct;
@@ -182,6 +184,9 @@ const BOT = `
     page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('CONSOLE', m.type(), m.text()); });
     await page.goto('file://' + path.resolve(__dirname, '..', 'index.html'));
     await page.waitForFunction(() => window.FC && FC.Game && FC.Game.state === 'title', null, { timeout: 15000 });
+    if (process.env.BOT_FAST) await page.evaluate(() => { window.BOT_GRID = { step: 6, powers: [0.2, 0.32, 0.45, 0.6, 0.78, 0.95], look: 0.8, lookStep: 1 / 80 }; });
+    // BOT_START='[..tiers..]' tries another start cluster for the level (balancing without editing js/levels.js)
+    if (process.env.BOT_START && level) await page.evaluate(([w, l, st]) => { FC.Levels.STARTS[w][l] = st; }, [level.w, level.l, JSON.parse(process.env.BOT_START)]);
     await page.evaluate(BOT);
     const t0 = Date.now();
     const r = await page.evaluate(([m, sk, lv]) => window.BOT.play({ maxShots: m, skill: sk, level: lv }), [maxShots, skill, level]);
@@ -196,8 +201,11 @@ const BOT = `
   if (level) {
     const won = results.filter((r) => r.won);
     const med = (arr) => { const a = arr.slice().sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)] : 0; };
-    console.log('LEVEL', lvArg, 'won', won.length + '/' + results.length, 'shots med', med(won.map((r) => r.shots)), 'min', Math.min(...won.map((r) => r.shots)), 'max', Math.max(...won.map((r) => r.shots)),
-      'score med', med(won.map((r) => r.score)), 'min', Math.min(...won.map((r) => r.score)), 'max', Math.max(...won.map((r) => r.score)), 'merges med', med(won.map((r) => r.merges)), 'stars', won.map((r) => r.stars).join(''));
+    const pct = (arr, q) => { const a = arr.slice().sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(q * a.length))] : 0; };
+    const fl = won.map((r) => r.shots);
+    console.log('LEVEL', lvArg, 'won', won.length + '/' + results.length, 'flicks p25', pct(fl, 0.25), 'med', med(fl), 'p75', pct(fl, 0.75), 'p90', pct(fl, 0.9), 'min', Math.min(...fl), 'max', Math.max(...fl),
+      'score med', med(won.map((r) => r.score)), 'merges med', med(won.map((r) => r.merges)), 'stars', won.map((r) => r.stars).join(''), 'lost at', results.filter((r) => !r.won).map((r) => r.shots).join(','));
+    console.log('FLICKS', lvArg, JSON.stringify(fl.sort((a, b) => a - b)), 'LOST', results.filter((r) => !r.won).length);
   }
   console.log('AVG shots', avg('shots'), 'score', avg('score'), 'stage', avg('stage'), 'merges', avg('merges'), 'maxTier', avg('maxTier'), 'simT', avg('simT'),
     'mergeShots%', (100 * results.reduce((s, r) => s + r.mergeShots, 0) / results.reduce((s, r) => s + r.shots, 0)).toFixed(0),

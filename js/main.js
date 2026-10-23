@@ -51,7 +51,7 @@
     // start a level of the adventure directly
     level(w, l) { FC.UI.playLevel(w, l); },
     // unlock everything / forget everything (for testing)
-    unlockAll() { for (let w = 0; w < FC.Levels.WORLDS.length; w++) for (let l = 0; l < FC.Levels.LEVELS_PER_WORLD; l++) FC.Levels.Progress.record(w, l, 1); },
+    unlockAll() { const P = FC.Levels.Progress, d = P.load(); for (let w = 0; w < FC.Levels.WORLDS.length; w++) for (let l = 0; l < FC.Levels.LEVELS_PER_WORLD; l++) { const k = FC.Levels.key(w, l); if (!d.levels[k]) d.levels[k] = { stars: 1, best: 0, flicks: 0 }; } P.save(); },
     wipe() { FC.Levels.Progress.reset(); FC.Levels.Collection.reset(); FC.store.set('best', 0); FC.store.set('coach', 0); },
   };
 

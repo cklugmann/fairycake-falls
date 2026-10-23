@@ -122,6 +122,51 @@
       this.updateNext();
       const br = $('bookHud').getBoundingClientRect();
       this.bookRect = br.width ? { left: br.left, top: br.top, right: br.right, bottom: br.bottom } : null;
+      this.placeTop();
+    },
+
+    // The top row of the HUD: the score pill on the left, the pause button on the right, and in a level the recipe
+    // chip in between – centred on the screen when there is room, otherwise in the gap, and never wider than the gap
+    // (v0.7 centred it on the screen with a max-width in vw: on phones it ran under the pill and its text overflowed).
+    // Also tells the coach card, the discovery toast and the stopwatch where the top row ends.
+    placeTop() {
+      const hud = $('hud');
+      if (!hud || hud.classList.contains('hidden')) return;
+      const pill = $('scorePill').getBoundingClientRect();
+      const pause = $('pauseBtn').getBoundingClientRect();
+      let bottom = Math.max(pill.bottom, pause.bottom);
+      const wrap = $('goalWrap');
+      if (!wrap.classList.contains('hidden')) {
+        const k = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--k')) || 1;
+        const gap = 8;
+        const left = pill.right + gap, right = pause.left - gap;
+        const room = Math.max(0, right - left);
+        const chip = $('goalChip');
+        wrap.style.left = left + 'px';
+        wrap.style.width = room + 'px';
+        chip.style.maxWidth = Math.max(60, room / k) + 'px';
+        chip.classList.toggle('narrow', room / k < 210);
+        chip.classList.toggle('tight', room / k < 150); // the smallest phones: a smaller icon, stars and count
+        chip.style.marginLeft = '0px';
+        const cw = chip.getBoundingClientRect().width;
+        const c = FC.clamp(window.innerWidth / 2, left + cw / 2, right - cw / 2);
+        chip.style.marginLeft = Math.max(0, Math.round(c - cw / 2 - left)) + 'px';
+        bottom = Math.max(bottom, chip.getBoundingClientRect().bottom);
+      }
+      this.topBottom = bottom;
+      // the hot-streak badge hangs below the score pill while a streak runs (layout sizes, so its pop-in animation
+      // does not matter)
+      const pe = $('scorePill'), st = $('streak');
+      const ks = pe.offsetHeight ? pill.height / pe.offsetHeight : 1;
+      this.streakBottom = st ? pill.top + (st.offsetTop + st.offsetHeight) * ks : 0;
+      hud.style.setProperty('--hudB', Math.round(bottom) + 'px');
+      hud.style.setProperty('--pillB', Math.round(pill.bottom) + 'px');
+    },
+    // where the top row of the HUD ends (CSS px) – the stopwatch over a cake in danger stays below it
+    hudBottom() {
+      const b = this.topBottom || 90;
+      const st = $('streak');
+      return st && this.streakBottom && st.classList.contains('show') ? Math.max(b, this.streakBottom) : b;
     },
 
     // the tutorial hand must never hide behind the Cake Book pill: fade the pill while they overlap
@@ -196,6 +241,7 @@
       this.setBook();
       this.setStreak(0);
       this.coachHide();
+      this.parTier = 0;
       this.setGoal();
       g.overShown = false;
     },
@@ -229,10 +275,13 @@
     showOver(st) {
       const lv = st.level;
       $('overScore').textContent = st.score;
-      $('overBest').textContent = lv ? LV.Progress.best(lv.w, lv.l) : st.best;
-      $('overBest').parentElement.classList.toggle('hidden', !!lv && !LV.Progress.best(lv.w, lv.l));
+      // in a level the record that counts is the fewest flicks (the stars come from them); endless keeps its best score
+      const bestF = lv ? LV.Progress.flicks(lv.w, lv.l) : 0;
+      $('overBest').textContent = lv ? (bestF ? bestF + ' flicks' : '') : st.best;
+      $('overBest').parentElement.classList.toggle('hidden', !!lv && !bestF);
       $('newBest').classList.toggle('hidden', !st.newBest);
-      $('overLevel').textContent = st.stage;
+      $('overLevelWord').textContent = lv ? 'Flicks' : 'Stage';
+      $('overLevel').textContent = lv ? st.shots : st.stage;
       $('overMerges').textContent = st.merges;
       $('overCombo').textContent = 'x' + Math.max(1, st.combo);
       if (st.maxKind) {
@@ -255,11 +304,41 @@
     },
 
     setScore(n) {
-      $('score').textContent = n;
-      const p = $('score').parentElement;
+      const el = $('score');
+      const grew = String(n).length !== el.textContent.length;
+      el.textContent = n;
+      const p = el.parentElement;
       p.classList.remove('bump');
       void p.offsetWidth;
       p.classList.add('bump');
+      if (grew) this.placeTop(); // a wider pill moves the recipe chip
+    },
+
+    // The star meter in the recipe chip: which stars a bake would still earn, and the flicks used of those allowed
+    // for the best of them ("★★★ 4/6"). Flicks are counted at the launch, so the flick that bakes the cake still
+    // counts for the stars shown while it flies. A star that slips away falls off with a little wobble.
+    setFlicks(shots, par) {
+      if (!par) return;
+      const tier = LV.starsForFlicks(par, shots);
+      const lim = tier === 3 ? par[1] : tier === 2 ? par[0] : 0;
+      const box = $('parStars');
+      if (this.parTier !== tier || !box.firstChild) {
+        const lost = this.parTier && tier < this.parTier; // the star at index `tier` just slipped away
+        let h = '';
+        for (let i = 0; i < 3; i++) h += '<i class="' + (i < tier ? 'on' : 'off') + (lost && i === tier ? ' drop' : '') + '">' + STAR + '</i>';
+        box.innerHTML = h;
+        if (lost && FC.Audio.streakLost) FC.Audio.streakLost();
+      }
+      const cnt = $('parCount');
+      const before = cnt.textContent;
+      cnt.textContent = tier > 1 ? shots + '/' + lim : String(shots);
+      $('parWord').textContent = tier > 1 ? (shots === 1 && lim === 1 ? 'flick' : 'flicks') : 'flicks · bake it!';
+      const row = $('goalPar');
+      row.classList.toggle('warn', tier > 1 && lim - shots <= 1);
+      row.classList.toggle('last', tier === 1);
+      if (shots > 0) { row.classList.remove('tick'); void row.offsetWidth; row.classList.add('tick'); }
+      this.parTier = tier;
+      if (before.length !== cnt.textContent.length) this.placeTop();
     },
 
     // the order of the stage: n merges fill the bar
@@ -287,20 +366,29 @@
     // the recipe chip: which cake the level asks for, silhouetted until it is baked for the first time
     setGoal() {
       const g = G();
-      const chip = $('goalChip');
-      if (!g.level) { chip.classList.add('hidden'); return; }
+      const wrap = $('goalWrap'), chip = $('goalChip');
+      if (!g.level) { wrap.classList.add('hidden'); this.placeTop(); return; }
       const def = g.level.def;
       const known = LV.Collection.has(def.kind);
       const s = CK.spec(def.kind);
-      chip.classList.remove('hidden');
-      $('goalKicker').textContent = 'Level ' + (g.level.l + 1) + ' · bake the';
-      $('goalName').textContent = known ? s.name : '???';
-      CK.drawIcon($('goalIcon'), def.kind, known ? { w: 44, h: 44 } : { w: 44, h: 44, silhouette: '#cdb8d4' });
+      const wasHidden = wrap.classList.contains('hidden');
+      wrap.classList.remove('hidden');
+      const n = g.level.l + 1;
       const close = (g.maxKindTier || 0) >= def.goal - 1 && !g.won;
+      // the kicker has a short and a long part; a narrow chip shows only the short one
+      const kick = g.won ? ['Baked!', ''] : close ? ['Almost!', ' One merge to go'] : ['Level ' + n, ' · bake the'];
+      $('goalKicker').innerHTML = '<span class="gk-a">' + esc(kick[0]) + '</span>' + (kick[1] ? '<span class="gk-b">' + esc(kick[1]) + '</span>' : '');
+      const name = known ? s.name : '???';
+      // redraw when the cake changes, not only the name: two unknown goals in a row are both "???"
+      const iconKey = def.kind + (known ? '' : '?');
+      if ($('goalName').textContent !== name || wasHidden || this.goalIconKey !== iconKey) {
+        $('goalName').textContent = name;
+        CK.drawIcon($('goalIcon'), def.kind, known ? { w: 44, h: 44 } : { w: 44, h: 44, silhouette: '#cdb8d4' });
+        this.goalIconKey = iconKey;
+      }
       chip.classList.toggle('close', close);
       chip.classList.toggle('done', !!g.won);
-      if (g.won) $('goalKicker').textContent = 'Level ' + (g.level.l + 1) + ' · baked!';
-      else if (close) $('goalKicker').textContent = 'Level ' + (g.level.l + 1) + ' · one more merge!';
+      this.placeTop();
     },
 
     updateNext(pulse) {
@@ -680,12 +768,20 @@
       CK.drawIcon($('lcIcon'), def.kind, known ? { w: 120, h: 120 } : { w: 120, h: 120, silhouette: SIL });
       $('lcStars').innerHTML = starsHtml(P.stars(w, l));
       $('lcHint').textContent = known ? s.title : s.hint;
+      // the day's water: the level's own twist, or the world's mood (plain spring water needs no note)
       const mod = $('lcMod');
-      if (def.mod) { mod.classList.remove('hidden'); mod.innerHTML = '<b>' + esc(def.mod.name) + '</b> ' + esc(def.mod.text); }
+      const note = def.mod && def.mod.name ? def.mod : w > 0 ? def.mood : null;
+      // the castle's gift for the royal levels (a level twist that is itself a gift says so already)
+      const wands = def.gifts && def.gifts.wands && !(def.mod && def.mod.gifts) ? def.gifts.wands : 0;
+      const lines = [];
+      if (note) lines.push('<b>' + esc(note.name) + '</b> ' + esc(note.text));
+      if (wands) lines.push('<b>Castle gift</b> ' + wands + (wands === 1 ? ' Wand' : ' Wands') + ' to start with.');
+      if (lines.length) { mod.classList.remove('hidden'); mod.innerHTML = lines.join('<br>'); }
       else mod.classList.add('hidden');
-      $('lcGoals').innerHTML = '<span>' + STAR + ' bake it</span><span>' + STAR + STAR + ' ' + def.stars[0] + ' pts</span><span>' + STAR + STAR + STAR + ' ' + def.stars[1] + ' pts</span>';
-      const best = P.best(w, l);
-      $('lcBest').textContent = best ? 'Your best: ' + best : 'A new recipe!';
+      // the stars: bake it – and bake it in few flicks
+      $('lcGoals').innerHTML = '<span>' + STAR + ' bake it</span><span>' + STAR + STAR + ' in ' + def.par[0] + ' flicks</span><span>' + STAR + STAR + STAR + ' in ' + def.par[1] + ' flicks</span>';
+      const bestF = P.flicks(w, l);
+      $('lcBest').textContent = bestF ? 'Your best: ' + bestF + (bestF === 1 ? ' flick' : ' flicks') : P.stars(w, l) > 0 ? 'Baked before – now every flick counts!' : 'A new recipe!';
       $('lcPlay').textContent = P.stars(w, l) > 0 ? 'Bake again!' : 'Bake!';
       this.open('levelCard');
     },
@@ -703,7 +799,16 @@
       const w = level.w, l = level.l;
       $('wonStars').innerHTML = starsHtml(res.stars, 'big');
       $('wonScore').textContent = res.score;
-      $('wonBest').textContent = res.newBest && res.prevStars > 0 ? 'New best!' : res.prevStars > 0 ? 'Best ' + LV.Progress.best(w, l) : '';
+      $('wonFlicks').textContent = res.flicks;
+      $('wonFlicksWord').textContent = res.flicks === 1 ? 'flick' : 'flicks';
+      $('wonBest').textContent = res.prevFlicks && res.newBestFlicks ? 'New best!' : res.prevFlicks ? 'Best ' + LV.Progress.flicks(w, l) : '';
+      // what the next star would take – a reason for one more try, never a scolding
+      const par = res.par || LV.level(w, l).par;
+      const hint = $('wonHint');
+      if (res.stars >= 3) hint.innerHTML = 'Perfect bake! ' + STAR + STAR + STAR;
+      else if (res.stars === 2) hint.innerHTML = STAR + STAR + STAR + ' in ' + par[1] + ' flicks or fewer';
+      else hint.innerHTML = STAR + STAR + ' in ' + par[0] + ' flicks · ' + STAR + STAR + STAR + ' in ' + par[1];
+      hint.classList.toggle('perfect', res.stars >= 3);
       CK.drawIcon($('wonIcon'), kind, { w: 120, h: 120, expr: 'happy' });
       const fresh = (G().runNew || []).indexOf(kind) >= 0;
       $('wonKicker').textContent = fresh ? 'New cake in your book!' : 'Baked again';
@@ -718,6 +823,9 @@
       this.setGoal();
       this.open('won');
       FC.Audio.levelUp();
+      // one chime per star as it lands (the CSS lets them pop in 0.18 s apart)
+      clearTimeout(this.timers.st0); clearTimeout(this.timers.st1); clearTimeout(this.timers.st2);
+      for (let i = 0; i < res.stars; i++) this.timers['st' + i] = setTimeout(() => { if (!$('won').classList.contains('hidden')) FC.Audio.star(i); }, 450 + i * 180);
     },
 
     // ============================================================
