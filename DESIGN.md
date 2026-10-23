@@ -1,4 +1,4 @@
-# Fairycake Falls – Game Design (prototype v0.8)
+# Fairycake Falls – Game Design (prototype v0.8.1)
 
 ## Pitch
 A cosy flick-and-merge game about *collecting cakes*. You flick cakes from a little slingshot
@@ -10,6 +10,32 @@ cake you bake for the first time goes into the Cake Book with its name, its stor
 floats up from the bottom. You *pull back and flick*, Golf-With-Your-Friends
 style, into a loose cluster of cakes floating in a pond with a current of its own.
 Bank shots, rides on the current, knock-ons and chain reactions replace the dropping column.
+
+## v0.8.1: a petit four worth baking, a cliff made of rock
+Feedback: the Cherry Bite (tier 2) looked boxy and plain next to the Strawberry Cupcake, and the "half circles" on the
+brown cliff of the island looked printed on, as if they did not belong there.
+
+- **Tier 2 is a soft fondant cushion now.** The petit four used to be a flat slab with hard edges: one flat colour on
+  the front, a lighter flat top. Now it is a superellipsoid – square-ish in plan, so it still never reads as one of
+  the round cakes, but with rounded corners, rounded shoulders and a domed top – painted as a stack of thin slices,
+  so the light runs over the shoulders the way it does over poured fondant. It got a collar of piped pearls, a
+  fluted paper cup with a scalloped rim that hugs its foot, a glossy streak on the shoulder and a bigger topper.
+  Every kind adds its own touch: icing drizzled over the top and a pair of cherries with a blossom (Cherry Bite),
+  honey pooling on the crown and running down the corners (Honey Bite), chocolate pearls and cocoa dust (Mocha
+  Bite), orange glowing into gold (Sunrise Bite), the cut fruit's seeded top (Dragonfruit Bite), gold sprinkles
+  (Lucky Clover Bite), confetti and a rainbow cup (Birthday Bite). The face sits a little higher, clear of the cup.
+  `tools/cakecheck.js` flags nothing (the Lucky Clover Bite moved to a yellower green to stay clear of the Dragon
+  Egg Cake). A bite costs about 1.4 ms to paint, once per size (sprites are cached).
+- **The cliff is rock with stones on its ledges.** The rock face's "boulders" were flat-bottomed half-domes, half
+  transparent, so they looked like stickers. Now the layers of rock are ledges (a lit lip over a soft shadow,
+  broken into tapering pieces), and whole rounded pebbles rest on them, alone or in twos and threes, each with its
+  own light from the top left, a greyer stone tone than the rock and a soft shadow on the rock below it – never
+  behind a waterfall. The same rock face paints the castle island, the side islands and the far islands in the
+  sky, so they were re-generated too (the front bank, the cloud sea and the puffs are pixel for pixel unchanged).
+- **Small things.** The Cake Book keeps its title, tabs and Close button in place and only the grid scrolls (on
+  phones the button sat half cut off at the bottom edge). The map's cloud sea uses the world's painted cloud puffs
+  instead of flat white ovals that looked like holes in the card. The progress line under the Play button sits on
+  a pill like the endless best (white text over the waterfall was hard to read).
 
 ## Design goal for v0.8: stars for a neat bake, a smoother climb, cakes and worlds you can tell apart
 Feedback from the first players (the game runs on GitHub Pages), checked against the code and the bot:
@@ -115,7 +141,7 @@ them similar frosting. Now every tier has a silhouette of its own, the same in e
 
 | Tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Shape | macaron | petit four (a fondant cube in a paper case) | cupcake | tart | drip cake | bundt (fluted ring, glaze tongues, something in the hole) | dome | charlotte (a fence of fingers, wafers, meringue or shells, a ribbon bow) | layer cake (taller) | winged two-tier torte | crowned royal cake |
+| Shape | macaron | petit four (a fondant cube in a paper case; a soft cushion with rounded shoulders since v0.8.1) | cupcake | tart | drip cake | bundt (fluted ring, glaze tongues, something in the hole) | dome | charlotte (a fence of fingers, wafers, meringue or shells, a ribbon bow) | layer cake (taller) | winged two-tier torte | crowned royal cake |
 
 The Magic Cake is a rainbow swirl on a gold plate now. The Pixie Pop is a heart on a stick.
 
@@ -480,7 +506,7 @@ The tiers are the sizes (the Blossom Falls menu is given as the example; every w
 | Tier | Silhouette | Blossom Falls | Radius* | Points when created |
 | ---: | --- | --- | ---: | ---: |
 | 1 | macaron | Lilac Macaron | 74 | – |
-| 2 | petit four (v0.8; a small drum before) | Cherry Bite | 88 | 2 |
+| 2 | petit four (v0.8; a small drum before; a soft fondant cushion since v0.8.1) | Cherry Bite | 88 | 2 |
 | 3 | cupcake | Strawberry Cupcake | 103 | 6 |
 | 4 | tart | Lemon Tart | 119 | 12 |
 | 5 | drip cake | Blossom Cake | 136 | 20 |
@@ -544,7 +570,7 @@ cluster at rest makes 0 impacts in 10 s (v0.5 cushion: ~1000); resting twins wit
 one cake of every tier 1–11 reaches 94–100 % of the Royal's ring (848).
 
 ## Art direction
-- **One camera.** The arena is tilted, so the pond is an ellipse with ratio K = 0.78. The water sits lower than the bank, so the far inner wall is visible and the spring tumbles over it into the pond. The near bank is a separate front layer that slightly overlaps the cakes at the front, which gives the scene real depth. The island cliff, waterfalls and the castle island use the same viewpoint.
+- **One camera.** The arena is tilted, so the pond is an ellipse with ratio K = 0.78. The water sits lower than the bank, so the far inner wall is visible and the spring tumbles over it into the pond. The near bank is a separate front layer that slightly overlaps the cakes at the front, which gives the scene real depth. The island cliff, waterfalls and the castle island use the same viewpoint. The cliffs are layered rock: ledges with a lit lip and a soft shadow, and whole pebbles resting on them (never flat shapes stuck on the rock).
 - **One style.** The cakes set the style: rounded shapes, soft gradients, gentle outlines in a darker shade of each colour, and light from the top left. The whole world uses that same vocabulary. Distant layers fade towards the sky colour.
 - **Cakes** are drawn procedurally at runtime, so they stay crisp at every size and their faces blink, look at the sling and react with joy, worry or sadness.
 - **Sling:** two candy-stick posts with a pink ribbon at the front of the pond. Tilly floats beside it and the "Next" bubble sits on the other side. After each flick, the next cake hops from the bubble into the sling.

@@ -47,7 +47,7 @@
     macaron: { ey: 0.1, ex: 0.32, my: 0.26, bx: 0.62, by: 0.23, k: 1 },
     pop: { ey: -0.14, ex: 0.3, my: 0.05, bx: 0.56, by: 0.01, k: 1 },
     tart: { ey: 0.62, ex: 0.3, my: 0.77, bx: 0.62, by: 0.74, k: 0.85 },
-    bite: { ey: 0.44, ex: 0.3, my: 0.6, bx: 0.58, by: 0.58, k: 0.95 },
+    bite: { ey: 0.36, ex: 0.3, my: 0.5, bx: 0.58, by: 0.48, k: 0.95 },
     bundt: { ey: 0.5, ex: 0.3, my: 0.67, bx: 0.6, by: 0.64, k: 1 },
     dome: { ey: 0.2, ex: 0.3, my: 0.37, bx: 0.6, by: 0.34, k: 1 },
     charlotte: { ey: 0.27, ex: 0.3, my: 0.44, bx: 0.6, by: 0.41, k: 1 },
@@ -64,7 +64,7 @@
     macaron: { top: 1.1, side: 1.12 },
     pop: { top: 1.15, side: 1.12 },
     tart: { top: 1.25, side: 1.15 },
-    bite: { top: 1.35, side: 1.12 },
+    bite: { top: 1.42, side: 1.14 },
     bundt: { top: 1.45, side: 1.15 },
     dome: { top: 1.5, side: 1.12 },
     charlotte: { top: 1.45, side: 1.15 },
@@ -1991,196 +1991,447 @@
   };
 
   // ------------------------------------------------------------------
-  // Tier 2 – the petit four: a little fondant cube in a paper case with one big topper.
-  // Square where every other cake is round, so the smallest cake after the Macaron is never mistaken for a drum.
+  // Tier 2 – the petit four: a soft cushion of poured fondant in a fluted paper cup, with a collar of piped
+  // pearls and one big topper. Square-ish in plan, so the smallest cake after the Macaron never reads as a round
+  // cake – but with rounded corners and shoulders and a domed top (a hard-edged cube looked like a box). The
+  // cushion is a superellipsoid painted as a stack of thin horizontal slices, so the light runs over its
+  // shoulders the way it does over glossy fondant. Each kind adds its own: icing drizzle, a honey pool, a
+  // gradient from orange to gold, a cut fruit top, confetti, bee stripes.
   // ------------------------------------------------------------------
+  // A: half size in plan, n: squareness of the plan, p: squareness of the profile (higher = flatter top),
+  // H: height, Y0: screen y of the centre of the foot, SV / CV: how the camera squashes depth / height;
+  // the cup: rim height, plan squareness, half size at the rim and at the foot (it hugs the cushion)
+  const BITE = { A: 0.9, n: 3.0, p: 3.3, H: 1.1, Y0: 0.53, SV: 0.46, CV: 0.9, cupH: 0.25, cupN: 3.0, cupRim: 0.905, cupFoot: 0.905 };
+  // a superellipse |x|^n + |z|^n = 1: the whole ring (for the slices), or its front half from left to right
+  const SE = {};
+  function seRing(n, front) {
+    const key = n + (front ? 'f' : 'r');
+    if (SE[key]) return SE[key];
+    const pts = [], M = front ? 96 : 112;
+    for (let i = 0; i <= M; i++) {
+      if (!front && i === M) break;
+      const th = front ? Math.PI * (1 - i / M) : (i / M) * TAU, c = Math.cos(th), sn = Math.sin(th);
+      pts.push([Math.sign(c) * Math.pow(Math.abs(c), 2 / n), Math.sign(sn) * Math.pow(Math.abs(sn), 2 / n)]);
+    }
+    return (SE[key] = pts);
+  }
+  // half size of the cushion at height fraction t (0 = foot, 1 = crown)
+  const biteProf = (t) => Math.pow(Math.max(0, 1 - Math.pow(Math.min(1, Math.max(0, t)), BITE.p)), 1 / BITE.p);
+  // the front half of a horizontal outline (half size a, screen centre yc) as screen points with their arc length
+  // and how much the surface faces the camera there (0 at the sides, 1 in front)
+  function frontPts(a, yc, n) {
+    const pts = [], unit = seRing(n || BITE.n, true);
+    let len = 0;
+    for (let i = 0; i < unit.length; i++) {
+      const x = unit[i][0] * a, y = yc + unit[i][1] * a * BITE.SV;
+      if (i) len += Math.hypot(x - pts[i - 1][0], y - pts[i - 1][1]);
+      pts.push([x, y, len, unit[i][1]]);
+    }
+    return pts;
+  }
+  // the point at arc length fraction f along such a front half
+  function alongFront(pts, f) {
+    const L = pts[pts.length - 1][2] * Math.min(1, Math.max(0, f));
+    let i = 1;
+    while (i < pts.length - 1 && pts[i][2] < L) i++;
+    const p = pts[i - 1], q = pts[i], k = (L - p[2]) / Math.max(1e-6, q[2] - p[2]);
+    return [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k, p[3] + (q[3] - p[3]) * k];
+  }
+  function ringPath(ctx, a, yc, n) {
+    const unit = seRing(n || BITE.n, false);
+    for (let i = 0; i < unit.length; i++) {
+      const x = unit[i][0] * a, y = yc + unit[i][1] * a * BITE.SV;
+      if (i) ctx.lineTo(x, y);
+      else ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+  }
+
+  // two cherries on stems that meet in a leaf (cherries on cakes come in pairs)
+  function cherryPair(ctx, x, y, s, lw) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    const L = [x - s * 0.66, y + s * 0.05], R = [x + s * 0.6, y + s * 0.32], J = [x + s * 0.18, y - s * 2.15];
+    for (const pass of [0, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(L[0] + s * 0.06, L[1] - s * 0.75);
+      ctx.quadraticCurveTo(L[0] - s * 0.05, y - s * 1.65, J[0], J[1]);
+      ctx.moveTo(R[0] - s * 0.04, R[1] - s * 0.78);
+      ctx.quadraticCurveTo(R[0] + s * 0.3, y - s * 1.4, J[0], J[1]);
+      ctx.lineWidth = pass ? s * 0.07 : s * 0.19;
+      ctx.strokeStyle = pass ? '#a8d870' : '#4f7a2c';
+      ctx.stroke();
+    }
+    // the leaf where the stems meet
+    ctx.beginPath();
+    ctx.moveTo(J[0], J[1]);
+    ctx.bezierCurveTo(J[0] + s * 0.35, J[1] - s * 0.55, J[0] + s * 1.05, J[1] - s * 0.45, J[0] + s * 1.3, J[1] + s * 0.08);
+    ctx.bezierCurveTo(J[0] + s * 0.9, J[1] + s * 0.32, J[0] + s * 0.35, J[1] + s * 0.25, J[0], J[1]);
+    const lg = ctx.createLinearGradient(J[0], J[1] - s * 0.5, J[0] + s * 0.6, J[1] + s * 0.3);
+    lg.addColorStop(0, '#b4ec8c');
+    lg.addColorStop(1, '#5aad47');
+    ctx.fillStyle = lg;
+    ctx.fill();
+    ctx.lineWidth = lw * 0.6;
+    ctx.strokeStyle = '#3f7a30';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(J[0] + s * 0.1, J[1] - s * 0.02);
+    ctx.quadraticCurveTo(J[0] + s * 0.7, J[1] - s * 0.12, J[0] + s * 1.15, J[1] + s * 0.05);
+    ctx.lineWidth = lw * 0.45;
+    ctx.stroke();
+    // the cherries: the one at the back first
+    for (const c of [[L, 1], [R, 1.06]]) {
+      const cx = c[0][0], cy = c[0][1], r = s * c[1];
+      glossBall(ctx, cx, cy, r, '#ff9aa6', '#ee3a55', '#a8173a', '#7f1230', lw);
+      ctx.beginPath();
+      ctx.ellipse(cx + r * 0.05, cy - r * 0.78, r * 0.26, r * 0.1, 0, 0, TAU);
+      ctx.fillStyle = 'rgba(110,10,40,0.45)';
+      ctx.fill();
+      circle(ctx, cx + r * 0.42, cy + r * 0.34, r * 0.09);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   STYLE.bite = function (ctx, s, lw) {
     const rng = FC.rng(seedOf(s));
-    const a = 0.9, tY = -0.14, b = a * 0.46;   // half width, centre of the top face, its half depth on screen
-    const r = 0.27, ry = r * 0.46;             // rounded corners (in the plan) and their height on screen
-    const h = 0.95 - (tY + b);                 // height of the front face
-    const F = s.fondant, L = s.outline;
-    const silhouette = (k) => {
-      const ax = a + (k || 0);
-      ctx.beginPath();
-      ctx.moveTo(-ax, tY - b + ry);
-      ctx.ellipse(-ax + r, tY - b + ry, r, ry, 0, Math.PI, Math.PI * 1.5);
-      ctx.lineTo(ax - r, tY - b);
-      ctx.ellipse(ax - r, tY - b + ry, r, ry, 0, Math.PI * 1.5, TAU);
-      ctx.lineTo(ax, tY + b - ry + h);
-      ctx.ellipse(ax - r, tY + b - ry + h, r, ry, 0, 0, Math.PI / 2);
-      ctx.lineTo(-ax + r, tY + b + h);
-      ctx.ellipse(-ax + r, tY + b - ry + h, r, ry, 0, Math.PI / 2, Math.PI);
-      ctx.closePath();
+    const { A, H, Y0, SV, CV } = BITE;
+    const F = s.fondant, L = s.outline, C = s.case || '#ffffff';
+    const apexY = Y0 - H * CV;
+    // where a point of the cushion lands on screen: on the top (plan point X, Z) or round the front (height h)
+    const hOver = (X, Z) => {
+      const rho = Math.pow(Math.pow(Math.abs(X) / A, BITE.n) + Math.pow(Math.abs(Z) / A, BITE.n), 1 / BITE.n);
+      return rho >= 1 ? 0 : H * Math.pow(1 - Math.pow(rho, BITE.p), 1 / BITE.p);
     };
-    const topFace = () => {
+    const onTop = (X, Z) => [X, Y0 - hOver(X, Z) * CV + Z * SV];
+    const frontAt = (h) => frontPts(A * biteProf(h / H), Y0 - h * CV);
+    // the paper cup round the foot: its rim and its foot
+    const hr = BITE.cupH, nC = BITE.cupN, aR = BITE.cupRim, aB = BITE.cupFoot;
+    const rimY = Y0 - hr * CV;
+    const rim = frontPts(aR, rimY, nC), foot = frontPts(aB, Y0, nC);
+    // the cushion, in slices that get finer towards the crown where the surface turns fastest; its foot tucks
+    // into the cup a little
+    const slices = [];
+    const N = 60, tr = hr / H;
+    const tuck = (t) => (t < tr ? 0.97 + 0.03 * Math.sqrt(t / tr) : 1);
+    for (let i = 0; i < N; i++) {
+      const u = i / N, t = 1 - (1 - u) * (1 - u);
+      const a = A * biteProf(t) * tuck(t), a2 = A * biteProf(t + 0.004) * tuck(t + 0.004);
+      const slope = (a - a2) / (0.004 * H);
+      // (how much it faces up, in steps: the colours repeat and the colour cache stays small)
+      slices.push({ t, a, yc: Y0 - t * H * CV, up: Math.round((Math.max(0, slope) / Math.sqrt(1 + slope * slope)) * 40) / 40 });
+    }
+    // the silhouette: for every x the highest and the lowest point of all the slices (the cushion is convex),
+    // sampled densely towards the upright sides
+    const sil = [];
+    {
+      const am = Math.max.apply(null, slices.map((q) => q.a)), lo = [];
+      for (let i = 0; i <= 72; i++) {
+        const x = am * Math.sin(-Math.PI / 2 + (Math.PI * i) / 72) * 0.9999;
+        let y0 = Infinity, y1 = -Infinity;
+        for (const q of slices) {
+          if (Math.abs(x) >= q.a) continue;
+          const z = q.a * SV * Math.pow(1 - Math.pow(Math.abs(x) / q.a, BITE.n), 1 / BITE.n);
+          if (q.yc - z < y0) y0 = q.yc - z;
+          if (q.yc + z > y1) y1 = q.yc + z;
+        }
+        sil.push([x, y0]);
+        lo.push([x, y1]);
+      }
+      for (let i = lo.length - 1; i >= 0; i--) sil.push(lo[i]);
+    }
+    const body = () => { ctx.beginPath(); sil.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); };
+    // its outline: stroked wide first, the fondant then covers its inner half
+    body();
+    ctx.lineWidth = lw * 2;
+    ctx.strokeStyle = L;
+    ctx.stroke();
+    // the fondant: each slice lit from the top left; the more it faces up, the lighter and the flatter its light
+    const T0 = s.topFrom || 0.8, T1 = s.topTo || T0 + 0.03;
+    for (const q of slices) {
+      let base = s.topCol ? mix(F, s.topCol, Math.round(FC.smoothstep(T0, T1, q.t) * 40) / 40) : F;
+      base = mix(base, shade(base, 0.42), Math.pow(q.up, 0.85) * 0.8);
+      const k = 1 - q.up * 0.7;
+      const g = ctx.createLinearGradient(-q.a, 0, q.a, 0);
+      g.addColorStop(0, shade(base, -0.24 * k));
+      g.addColorStop(0.07, shade(base, 0.22 * k));
+      g.addColorStop(0.24, shade(base, 0.08 * k));
+      g.addColorStop(0.55, base);
+      g.addColorStop(0.84, shade(base, -0.1 * k));
+      g.addColorStop(0.95, shade(base, -0.24 * k));
+      g.addColorStop(1, shade(base, -0.32 * k));
       ctx.beginPath();
-      ctx.moveTo(-a, tY - b + ry);
-      ctx.ellipse(-a + r, tY - b + ry, r, ry, 0, Math.PI, Math.PI * 1.5);
-      ctx.lineTo(a - r, tY - b);
-      ctx.ellipse(a - r, tY - b + ry, r, ry, 0, Math.PI * 1.5, TAU);
-      ctx.lineTo(a, tY + b - ry);
-      ctx.ellipse(a - r, tY + b - ry, r, ry, 0, 0, Math.PI / 2);
-      ctx.lineTo(-a + r, tY + b);
-      ctx.ellipse(-a + r, tY + b - ry, r, ry, 0, Math.PI / 2, Math.PI);
-      ctx.closePath();
-    };
-    // the fondant body (the front face shows; the top face is painted over it)
-    silhouette();
-    ctx.fillStyle = cylGradient(ctx, -a, a, F, 0.8);
-    ctx.fill();
+      ringPath(ctx, q.a, q.yc);
+      ctx.fillStyle = g;
+      ctx.fill();
+    }
     ctx.save();
-    silhouette();
+    body();
     ctx.clip();
+    // bands round the cushion (the Honey Bite is dressed as a bumblebee), given by the screen y of their top
     if (s.stripes) {
-      // bands across the front (the Honey Bite is dressed as a bumblebee)
       s.stripes.forEach((c, i) => {
-        const y0 = tY + b + 0.1 + i * 0.2;
+        const y0 = 0.3 + i * 0.19, y1 = y0 + 0.095;
+        const top = frontAt((Y0 + A * SV - y0) / CV), bot = frontAt((Y0 + A * SV - y1) / CV);
         ctx.beginPath();
-        ctx.moveTo(-a - 0.1, y0);
-        ctx.quadraticCurveTo(0, y0 + 0.05, a + 0.1, y0);
-        ctx.lineTo(a + 0.1, y0 + 0.09);
-        ctx.quadraticCurveTo(0, y0 + 0.14, -a - 0.1, y0 + 0.09);
+        top.forEach((p, j) => (j ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+        for (let j = bot.length - 1; j >= 0; j--) ctx.lineTo(bot[j][0], bot[j][1]);
         ctx.closePath();
-        ctx.fillStyle = cylGradient(ctx, -a, a, c, 0.6);
+        ctx.fillStyle = cylGradient(ctx, -A, A, c, 0.7);
         ctx.fill();
       });
     }
-    if (s.confetti) sprinkles(ctx, rng, 26, 0, tY + b + 0.25, a * 0.95, 0.3, s.confetti, 0.045);
-    const ao = ctx.createLinearGradient(0, 0.55, 0, 1.0);
+    if (s.confetti) sprinkles(ctx, rng, 34, 0, 0.12, A * 0.95, 0.52, s.confetti, 0.042);
+    // a soft shine on the crown, and the cushion darkening where it sinks into the cup
+    const tp = onTop(-0.36, -0.3);
+    const hg = ctx.createRadialGradient(tp[0], tp[1], 0.02, tp[0], tp[1], 0.62);
+    hg.addColorStop(0, 'rgba(255,255,255,0.5)');
+    hg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hg;
+    ctx.fillRect(-1.2, -1, 2.4, 1.6);
+    const ao = ctx.createLinearGradient(0, rimY + A * SV - 0.22, 0, rimY + A * SV);
     ao.addColorStop(0, 'rgba(0,0,0,0)');
-    ao.addColorStop(1, rgba(L, 0.35));
+    ao.addColorStop(1, rgba(L, 0.32));
     ctx.fillStyle = ao;
-    ctx.fillRect(-1.2, 0.5, 2.4, 0.6);
-    const rl = ctx.createLinearGradient(-a, 0, -a * 0.65, 0);
-    rl.addColorStop(0, 'rgba(255,255,255,0)');
-    rl.addColorStop(0.4, 'rgba(255,255,255,0.3)');
-    rl.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = rl;
-    ctx.fillRect(-a, tY, a * 0.4, 1.2);
+    ctx.fillRect(-1.2, 0, 2.4, 1.2);
     ctx.restore();
-    // the top face, a touch lighter (light from above)
-    topFace();
-    const tg = ctx.createRadialGradient(-a * 0.35, tY - b * 0.5, 0.02, 0, tY, a * 1.1);
-    const top = s.topCol || F;
-    tg.addColorStop(0, shade(top, 0.45));
-    tg.addColorStop(0.6, shade(top, 0.14));
-    tg.addColorStop(1, shade(top, -0.04));
-    ctx.fillStyle = tg;
-    ctx.fill();
-    ctx.lineWidth = lw * 0.6;
-    ctx.strokeStyle = rgba(shade(F, -0.3), 0.55);
-    ctx.stroke();
+    // a glossy streak along the left shoulder
+    ctx.save();
+    ctx.lineCap = 'round';
+    const gl = frontAt(H * 0.86);
     ctx.beginPath();
-    ctx.ellipse(-a * 0.42, tY - b * 0.45, a * 0.32, b * 0.22, -0.1, 0, TAU);
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    for (let f = 0.08; f <= 0.36; f += 0.02) { const p = alongFront(gl, f); f > 0.08 ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }
+    ctx.lineWidth = 0.05;
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.stroke();
+    const dp = alongFront(gl, 0.43);
+    circle(ctx, dp[0], dp[1], 0.025);
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.fill();
-    // a piped bead border along the top's front edge
-    const bc = s.border || '#ffffff';
-    for (let i = 0; i <= 8; i++) {
-      const x = -a + r * 0.6 + ((2 * a - r * 1.2) * i) / 8;
-      const y = tY + b - (Math.abs(x) > a - r ? ry * (1 - Math.sqrt(Math.max(0, 1 - Math.pow((Math.abs(x) - (a - r)) / r, 2)))) : 0);
-      glossBall(ctx, x, y, 0.065, '#ffffff', bc, shade(bc, -0.15), rgba(shade(bc, -0.45), 0.6), lw, 0.4);
-    }
-    // the paper case: pleats and a scalloped rim
-    const cy0 = 0.68, cx = a + 0.05, C = s.case || '#ffffff';
-    const casePath = () => {
-      ctx.beginPath();
-      ctx.moveTo(-cx, cy0 + 0.04);
-      const n = 8;
-      for (let i = 0; i < n; i++) {
-        const x0 = -cx + (2 * cx * i) / n, x1 = -cx + (2 * cx * (i + 1)) / n;
-        ctx.quadraticCurveTo((x0 + x1) / 2, cy0 - 0.06, x1, cy0 + 0.04);
+    ctx.restore();
+    // icing drizzled across the top: diagonal strings that run over the front shoulder in a little drip
+    if (s.drizzle) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const lines = [];
+      for (let i = 0; i < 4; i++) {
+        const c0 = -0.72 + i * 0.48, pts = [];
+        for (let k = 0; k <= 40; k++) {
+          const v = -1 + (2 * k) / 40;
+          const X = c0 + v * 0.42 + Math.sin(v * 4 + i * 2) * 0.025, Z = v * 0.95;
+          const rho = Math.pow(Math.pow(Math.abs(X) / A, BITE.n) + Math.pow(Math.abs(Z) / A, BITE.n), 1 / BITE.n);
+          if (rho < 0.87) pts.push(onTop(X, Z));
+          else if (pts.length && Z > 0) break;
+        }
+        if (pts.length > 2) lines.push(pts);
       }
-      ctx.lineTo(cx, tY + b - ry + h);
-      ctx.ellipse(cx - r, tY + b - ry + h, r, ry, 0, 0, Math.PI / 2);
-      ctx.lineTo(-cx + r, tY + b + h);
-      ctx.ellipse(-cx + r, tY + b - ry + h, r, ry, 0, Math.PI / 2, Math.PI);
+      for (const pass of [0, 1]) {
+        for (const pts of lines) {
+          const dy = pass ? 0 : 0.016;
+          ctx.beginPath();
+          pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1] + dy) : ctx.moveTo(p[0], p[1] + dy)));
+          const e = pts[pts.length - 1];
+          ctx.lineTo(e[0], e[1] + 0.07 + dy);
+          ctx.lineWidth = pass ? 0.036 : 0.044;
+          ctx.strokeStyle = pass ? s.drizzle : rgba(shade(F, -0.5), 0.3);
+          ctx.stroke();
+          if (pass) { circle(ctx, e[0], e[1] + 0.075, 0.03); ctx.fillStyle = s.drizzle; ctx.fill(); }
+        }
+      }
+      ctx.restore();
+    }
+    // a glaze poured over the crown (the Honey Bite's honey), running down the shoulders in drips:
+    // [where along the front, half width, length]
+    if (s.glaze) {
+      const tg = s.glazeAt || 0.88, gEdge = frontAt(H * tg);
+      const drips = s.glazeDrips || [[0.14, 0.05, 0.26], [0.84, 0.05, 0.21]];
+      const edge = [];
+      let di = 0;
+      for (let i = 0; i < gEdge.length; i++) {
+        const f = gEdge[i][2] / gEdge[gEdge.length - 1][2];
+        const d = drips[di];
+        if (d && f >= d[0] - d[1]) {
+          const a = alongFront(gEdge, d[0] - d[1]), b = alongFront(gEdge, d[0] + d[1]), m = alongFront(gEdge, d[0]);
+          const w = Math.abs(b[0] - a[0]);
+          edge.push(['M', a[0], a[1]]);
+          edge.push(['C', a[0] + w * 0.05, a[1] + d[2] * 0.6, m[0] - w * 0.55, m[1] + d[2], m[0], m[1] + d[2]]);
+          edge.push(['C', m[0] + w * 0.55, m[1] + d[2], b[0] - w * 0.05, b[1] + d[2] * 0.6, b[0], b[1]]);
+          while (i < gEdge.length - 1 && gEdge[i][2] / gEdge[gEdge.length - 1][2] < d[0] + d[1]) i++;
+          di++;
+          continue;
+        }
+        edge.push(['L', gEdge[i][0], gEdge[i][1] + Math.sin(gEdge[i][0] * 13 + 1) * 0.014 * gEdge[i][3]]);
+      }
+      const edgePath = (close) => {
+        ctx.beginPath();
+        edge.forEach((e, i) => {
+          if (e[0] === 'C') ctx.bezierCurveTo(e[1], e[2], e[3], e[4], e[5], e[6]);
+          else if (i === 0) ctx.moveTo(e[1], e[2]);
+          else ctx.lineTo(e[1], e[2]);
+        });
+        if (close) { ctx.lineTo(1.3, -1.6); ctx.lineTo(-1.3, -1.6); ctx.closePath(); }
+      };
+      ctx.save();
+      body();
+      ctx.clip();
+      edgePath(true);
+      ctx.fillStyle = s.glaze;
+      ctx.fill();
+      const gp = onTop(-0.3, -0.12);
+      ctx.beginPath();
+      ctx.ellipse(gp[0], gp[1], 0.2, 0.05, -0.12, 0, TAU);
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fill();
+      ctx.restore();
+      ctx.save();
+      body();
+      ctx.clip();
+      edgePath(false);
+      ctx.lineWidth = lw * 0.7;
+      ctx.strokeStyle = s.glazeLine || shade(F, -0.4);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // a collar of piped pearls along the shoulder
+    const bc = s.border || '#ffffff';
+    const col = frontAt(H * 0.74);
+    for (let i = 0; i <= 12 && s.border !== false; i++) {
+      const p = alongFront(col, 0.03 + (0.94 * i) / 12);
+      const r = (i % 2 ? 0.045 : 0.058) * (0.55 + 0.45 * Math.sqrt(Math.max(0, p[2])));
+      glossBall(ctx, p[0], p[1], r, '#ffffff', bc, shade(bc, -0.15), rgba(shade(bc, -0.45), 0.6), lw, 0.4);
+    }
+    // the front of the paper cup: fluted, with a scalloped rim (it wraps round the front; seen edge-on at the
+    // very sides it would only be a sliver, so it ends a little before)
+    const NS = 10, f0 = 0.035, fr = (f) => f0 + (1 - 2 * f0) * f;
+    const cupPath = () => {
+      ctx.beginPath();
+      const p0 = alongFront(rim, f0);
+      ctx.moveTo(p0[0], p0[1]);
+      for (let i = 0; i < NS; i++) {
+        const b = alongFront(rim, fr((i + 1) / NS)), m = alongFront(rim, fr((i + 0.5) / NS));
+        ctx.quadraticCurveTo(m[0], m[1] - 0.1 * (0.35 + 0.65 * Math.sqrt(Math.max(0, m[2]))), b[0], b[1]);
+      }
+      for (let j = foot.length - 1; j >= 0; j--) ctx.lineTo(foot[j][0], foot[j][1]);
       ctx.closePath();
     };
-    casePath();
-    ctx.fillStyle = cylGradient(ctx, -cx, cx, C, 0.7);
+    cupPath();
+    ctx.fillStyle = cylGradient(ctx, -aR, aR, C, 0.7);
     ctx.fill();
     ctx.save();
-    casePath();
+    cupPath();
     ctx.clip();
-    if (s.caseRainbow) {
-      // a party case: every pleat another colour
-      for (let i = 0; i < 16; i++) {
-        const x0 = -cx + (2 * cx * i) / 16;
-        ctx.fillStyle = s.caseRainbow[i % s.caseRainbow.length];
-        ctx.fillRect(x0, cy0 - 0.1, (2 * cx) / 16 + 0.005, 0.5);
+    const NP = 24;
+    for (let i = 0; i < NP; i++) {
+      const a0 = alongFront(rim, i / NP), a1 = alongFront(rim, (i + 1) / NP);
+      const b0 = alongFront(foot, i / NP), b1 = alongFront(foot, (i + 1) / NP);
+      ctx.beginPath();
+      ctx.moveTo(a0[0], a0[1] - 0.12);
+      ctx.lineTo(a1[0], a1[1] - 0.12);
+      ctx.lineTo(b1[0], b1[1] + 0.05);
+      ctx.lineTo(b0[0], b0[1] + 0.05);
+      ctx.closePath();
+      if (s.caseRainbow) {
+        ctx.fillStyle = s.caseRainbow[Math.floor(i / 2) % s.caseRainbow.length];
+        ctx.fill();
+      } else if (i % 2) {
+        ctx.fillStyle = rgba(shade(C, -0.35), 0.16);
+        ctx.fill();
       }
-      const sh = ctx.createLinearGradient(-cx, 0, cx, 0);
-      sh.addColorStop(0, 'rgba(255,255,255,0.25)');
+      ctx.lineWidth = lw * 0.45;
+      ctx.strokeStyle = rgba(shade(C, -0.4), 0.45);
+      ctx.beginPath();
+      ctx.moveTo(a0[0], a0[1] - 0.12);
+      ctx.lineTo(b0[0], b0[1] + 0.05);
+      ctx.stroke();
+    }
+    if (s.caseRainbow) {
+      const sh = ctx.createLinearGradient(-aR, 0, aR, 0);
+      sh.addColorStop(0, 'rgba(255,255,255,0.3)');
       sh.addColorStop(0.5, 'rgba(255,255,255,0)');
       sh.addColorStop(1, 'rgba(60,20,60,0.25)');
       ctx.fillStyle = sh;
-      ctx.fillRect(-cx, cy0 - 0.1, 2 * cx, 0.5);
-    }
-    ctx.lineWidth = lw * 0.55;
-    ctx.strokeStyle = rgba(shade(C, -0.35), 0.55);
-    for (let i = 0; i <= 16; i++) {
-      const x = -cx + (2 * cx * i) / 16;
-      ctx.beginPath();
-      ctx.moveTo(x, cy0 - 0.05);
-      ctx.lineTo(x * 0.97, 1.05);
-      ctx.stroke();
+      ctx.fillRect(-1.2, 0, 2.4, 1.1);
     }
     if (s.caseDots) {
       ctx.fillStyle = s.caseDots;
-      for (let i = 0; i < 8; i++) { circle(ctx, -cx + 0.12 + i * ((2 * cx - 0.24) / 7), 0.85, 0.04); ctx.fill(); }
+      for (let i = 0; i < 12; i++) {
+        const a = alongFront(rim, fr((i + 0.5) / 12)), b = alongFront(foot, fr((i + 0.5) / 12));
+        const k = 0.35 + 0.65 * Math.sqrt(Math.max(0, a[2]));
+        ctx.beginPath();
+        ctx.ellipse(a[0] * 0.45 + b[0] * 0.55, a[1] * 0.45 + b[1] * 0.55, 0.036 * k, 0.034, 0, 0, TAU);
+        ctx.fill();
+      }
     }
+    // the scalloped edge catches the light; the foot is in shadow
+    ctx.lineWidth = lw * 0.9;
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath();
+    for (let i = 0; i < NS; i++) {
+      const a = alongFront(rim, fr(i / NS) + 0.01), b = alongFront(rim, fr((i + 1) / NS) - 0.01), m = alongFront(rim, fr((i + 0.5) / NS));
+      ctx.moveTo(a[0], a[1] + 0.025);
+      ctx.quadraticCurveTo(m[0], m[1] - 0.1 * (0.35 + 0.65 * Math.sqrt(Math.max(0, m[2]))) + 0.03, b[0], b[1] + 0.025);
+    }
+    ctx.stroke();
+    const cao = ctx.createLinearGradient(0, Y0 + aB * SV - 0.2, 0, Y0 + aB * SV);
+    cao.addColorStop(0, 'rgba(0,0,0,0)');
+    cao.addColorStop(1, rgba(shade(C, -0.5), 0.3));
+    ctx.fillStyle = cao;
+    ctx.fillRect(-1.2, 0, 2.4, 1.2);
     ctx.restore();
-    casePath();
-    ctx.lineWidth = lw * 0.8;
+    cupPath();
+    ctx.lineWidth = lw * 0.85;
     ctx.strokeStyle = shade(C, -0.45);
     ctx.stroke();
-    // outline of the whole cube
-    silhouette();
-    ctx.lineWidth = lw;
-    ctx.strokeStyle = L;
-    ctx.stroke();
-    // the topper
+    // the topper sits on the crown
+    const tY = apexY + 0.06;
     switch (s.topping) {
       case 'cherry':
-        creamSwirl(ctx, 0, tY + 0.08, 0.3, '#ffffff', lw);
-        cherry(ctx, 0.03, tY - 0.34, 0.26, lw);
+        creamSwirl(ctx, -0.04, tY + 0.02, 0.32, '#ffffff', lw);
+        cherryPair(ctx, 0.04, tY - 0.5, 0.17, lw);
+        flower(ctx, -0.46, tY + 0.12, 0.13, '#ffc6dc', '#ffd34d', lw, 0.5, 5);
         break;
       case 'honey':
-        // a pool of honey running over the edge, a honeycomb and a busy bee
-        ctx.beginPath();
-        ctx.ellipse(-0.05, tY + 0.02, 0.62, 0.26, 0, 0, TAU);
-        ctx.fillStyle = 'rgba(244,168,28,0.85)';
-        ctx.fill();
-        ctx.lineWidth = lw * 0.6;
-        ctx.strokeStyle = '#b8781e';
-        ctx.stroke();
-        honeycomb(ctx, -0.18, tY - 0.06, 0.2, lw);
-        bee(ctx, 0.36, tY - 0.42, 0.17, lw);
+        honeycomb(ctx, -0.18, tY - 0.02, 0.2, lw);
+        bee(ctx, 0.34, tY - 0.4, 0.17, lw);
         break;
       case 'mocha':
-        for (let i = 0; i < 40; i++) { const an = rng() * TAU, rr = Math.sqrt(rng()); circle(ctx, Math.cos(an) * 0.7 * rr, tY + Math.sin(an) * 0.3 * rr, 0.012 + rng() * 0.012); ctx.fillStyle = 'rgba(90,50,30,0.5)'; ctx.fill(); }
-        creamSwirl(ctx, 0, tY + 0.08, 0.32, '#fff7ec', lw);
-        coffeeBean(ctx, 0.02, tY - 0.4, 0.18, lw, -0.5);
+        for (let i = 0; i < 46; i++) {
+          const an = rng() * TAU, rr = Math.sqrt(rng()) * 0.8;
+          const p = onTop(Math.cos(an) * rr * 0.9, Math.sin(an) * rr * 0.9);
+          circle(ctx, p[0], p[1], 0.011 + rng() * 0.012);
+          ctx.fillStyle = 'rgba(90,50,30,0.5)';
+          ctx.fill();
+        }
+        creamSwirl(ctx, 0, tY + 0.02, 0.32, '#fff7ec', lw);
+        coffeeBean(ctx, 0.04, tY - 0.44, 0.2, lw, -0.5);
         break;
       case 'sunrise':
-        creamSwirl(ctx, -0.26, tY + 0.08, 0.25, '#fff7ec', lw);
-        citrusSlice(ctx, 0.26, tY - 0.22, 0.33, lw, ORANGE);
+        creamSwirl(ctx, -0.26, tY + 0.04, 0.25, '#fff7ec', lw);
+        citrusSlice(ctx, 0.24, tY - 0.22, 0.33, lw, ORANGE);
+        flower(ctx, -0.5, tY + 0.16, 0.11, '#ffffff', '#ffc83d', lw, 0.2, 5);
         break;
       case 'dragonfruit':
-        // the white, black-seeded flesh on top and the green-tipped scales of the fruit
-        for (let i = 0; i < 26; i++) { const an = rng() * TAU, rr = Math.sqrt(rng()); ctx.beginPath(); ctx.ellipse(Math.cos(an) * 0.74 * rr, tY + Math.sin(an) * 0.32 * rr, 0.022, 0.016, an, 0, TAU); ctx.fillStyle = '#2a1a2a'; ctx.fill(); }
+        for (let i = 0; i < 30; i++) {
+          const an = rng() * TAU, rr = Math.sqrt(rng()) * 0.72;
+          const p = onTop(Math.cos(an) * rr, Math.sin(an) * rr);
+          ctx.beginPath();
+          ctx.ellipse(p[0], p[1], 0.022, 0.015, an, 0, TAU);
+          ctx.fillStyle = '#2a1a2a';
+          ctx.fill();
+        }
         for (const q of [[-0.2, -1.3], [0.2, -1.85], [0, -1.57]]) mintLeaf(ctx, 0, tY + 0.02, 0.42, q[1], lw, ['#c8f59a', '#6ccf4a', '#3f8a2a']);
-        glossBall(ctx, 0, tY + 0.0, 0.12, '#ffd6ea', '#ff3f9a', '#a0185e', '#6e1040', lw);
+        glossBall(ctx, 0, tY, 0.12, '#ffd6ea', '#ff3f9a', '#a0185e', '#6e1040', lw);
         break;
       case 'clover':
-        sprinkles(ctx, rng, 12, 0, tY, 0.62, 0.26, ['#ffffff', '#ffe27a'], 0.045);
+        sprinkles(ctx, rng, 12, 0, tY + 0.05, 0.62, 0.24, ['#ffffff', '#ffe27a'], 0.045);
         clover(ctx, 0.0, tY - 0.3, 0.32, lw);
-        goldStar(ctx, 0.5, tY - 0.18, 0.12, lw);
+        goldStar(ctx, 0.5, tY - 0.12, 0.12, lw);
         break;
       case 'birthday':
-        sprinkles(ctx, rng, 24, 0, tY, 0.7, 0.3, ['#ff8fc4', '#8fe3ff', '#ffe27a', '#a7ebc8', '#c9a6ff'], 0.05);
+        sprinkles(ctx, rng, 18, 0, tY + 0.06, 0.62, 0.26, ['#ff8fc4', '#8fe3ff', '#ffe27a', '#a7ebc8', '#c9a6ff'], 0.05);
         creamSwirl(ctx, -0.32, tY + 0.06, 0.2, '#ffffff', lw);
         candle(ctx, 0.18, tY - 0.06, 0.3, lw);
         break;
@@ -3256,9 +3507,9 @@
     ingr: ['lilac sugar', 'almond dust', 'one folded wish'], hint: "Where every fairy's baking begins.",
     shell: '#c3acff', filling: '#fff4fb', outline: '#7a5fc2', accent: '#ff7fb3', deco: 'heart', particle: ['#c3acff', '#fff4fb', '#ff7fb3', '#e6dcff'] });
   K({ id: 'w0t2', tier: 2, world: 0, name: 'Cherry Bite', title: 'Cherryblossom Fairy Kiss',
-    lore: 'A bite-sized sponge in a cherry-red coat, crowned with a single glossy cherry. Legend says the cherry always lands stem-up when nobody is looking.',
-    ingr: ['cherry fondant', 'a glossy cherry', 'a swirl of cloud cream'], hint: 'Small, square and cherry-red.',
-    fondant: '#ee4d68', outline: '#9a1838', case: '#fff4f7', caseDots: '#ff9fb8', border: '#ffffff', topping: 'cherry', particle: ['#ee4d68', '#ffffff', '#ff9fb8', '#ffd6e0'] });
+    lore: 'A bite-sized sponge in a soft cherry-red coat, with a collar of sugar pearls and a pair of glossy cherries on a swirl of cream. Legend says the cherries always land stem-up when nobody is looking.',
+    ingr: ['cherry fondant', 'a pair of glossy cherries', 'a swirl of cloud cream', 'one cherry blossom'], hint: 'Small, soft and cherry-red.',
+    fondant: '#ee4d68', outline: '#9a1838', case: '#fff4f7', caseDots: '#ff9fb8', border: '#ffffff', drizzle: '#ffffff', topping: 'cherry', particle: ['#ee4d68', '#ffffff', '#ff9fb8', '#ffd6e0'] });
   K({ id: 'w0t3', tier: 3, world: 0, name: 'Strawberry Cupcake', title: 'Cupcake Pixie',
     lore: "Tilly's favourite. The frosting is piped in a spiral so the strawberry on top has a comfy place to sit.",
     ingr: ['strawberry frosting', 'a sky-blue wrapper', 'rainbow sprinkles'], hint: 'A spiral of pink with a berry on top.',
@@ -3306,7 +3557,7 @@
   K({ id: 'w1t2', tier: 2, world: 1, name: 'Honey Bite', title: "The Honeybee Queen's Treasure",
     lore: 'A golden little cube in bumblebee stripes, glazed with honey from the Candy Woods hives. The bees drizzle it themselves, very carefully.',
     ingr: ['hive honey', 'golden sponge', 'a honeycomb chip'], hint: 'Drizzled by the bees themselves.',
-    fondant: '#ffcf4a', stripes: ['#5a3214', '#5a3214'], outline: '#7a4a12', case: '#fff6dc', caseDots: '#f4a81c', border: '#fffaf0', topping: 'honey', particle: ['#ffe079', '#f4a81c', '#fff1c8', '#ffffff'] });
+    fondant: '#ffcf4a', stripes: ['#5a3214', '#5a3214'], outline: '#7a4a12', case: '#fff6dc', caseDots: '#f4a81c', border: false, glaze: 'rgba(236,140,16,0.62)', glazeLine: '#b8701a', glazeAt: 0.9, glazeDrips: [[0.1, 0.045, 0.3], [0.3, 0.035, 0.12], [0.9, 0.045, 0.22]], topping: 'honey', particle: ['#ffe079', '#f4a81c', '#fff1c8', '#ffffff'] });
   K({ id: 'w1t3', tier: 3, world: 1, name: 'Mint Choc Cupcake', title: "The Forest Fairy's Emerald Dream",
     lore: 'A swirl of cool mint and chocolate cream with chocolate chips, in a cocoa wrapper. Refreshing after a long flight through the woods.',
     ingr: ['cool mint frosting', 'chocolate cream', 'a cocoa wrapper'], hint: 'Cool, green and speckled with chocolate.',
@@ -3354,7 +3605,7 @@
   K({ id: 'w2t2', tier: 2, world: 2, name: 'Mocha Bite', title: "The Witch's Midnight Brew",
     lore: 'A little coffee cube with a cream swirl and a single coffee bean. The witch of the bay drinks three before sunrise.',
     ingr: ['witch-brewed coffee', 'a cream swirl', 'one coffee bean'], hint: 'Strong enough to wake a witch.',
-    fondant: '#d9b088', outline: '#6a4024', case: '#8a5a34', caseDots: '#fff1e0', border: '#fff7ec', topping: 'mocha', particle: ['#d9b088', '#8a5a34', '#fff7ec', '#4a2a18'] });
+    fondant: '#d9b088', outline: '#6a4024', case: '#8a5a34', caseDots: '#fff1e0', border: '#7a4a2a', topping: 'mocha', particle: ['#d9b088', '#8a5a34', '#fff7ec', '#4a2a18'] });
   K({ id: 'w2t3', tier: 3, world: 2, name: 'Starberry Cupcake', title: "The Starlight Pixie's Cupcake",
     lore: 'Starberry-pink frosting full of star sprinkles, in a midnight wrapper, with a gold star on top. Picked, apparently, from a starberry bush.',
     ingr: ['starberry frosting', 'star sprinkles', 'one fallen star'], hint: 'Sprinkled with tiny stars.',
@@ -3401,9 +3652,9 @@
     ingr: ['sky-blue shell', 'a cloud of cream', 'a breath of wind'], hint: 'Light as a cloud, because it is one.',
     shell: '#a9d8ff', filling: '#ffffff', outline: '#4f78b8', accent: '#ffffff', deco: 'cloud', particle: ['#a9d8ff', '#ffffff', '#d6ecff', '#ffffff'] });
   K({ id: 'w3t2', tier: 2, world: 3, name: 'Sunrise Bite', title: 'The Sunspell of the Citrus Sorceress',
-    lore: 'A sunset-orange petit four with an orange slice on top. Baked at dawn on the highest peak, where the sun comes up first.',
+    lore: 'A petit four that glows from sunset orange to morning gold, with an orange slice and an orange blossom on top. Baked at dawn on the highest peak, where the sun comes up first.',
     ingr: ['dawn-orange sponge', 'a slice of sunrise', 'orange-blossom cream'], hint: 'Baked where the sun comes up first.',
-    fondant: '#ff9050', outline: '#b8501e', case: '#fff0dc', caseDots: '#ff9a3c', border: '#fff4e6', topping: 'sunrise', particle: ['#ff9050', '#ffc27a', '#fff4e6', '#ffffff'] });
+    fondant: '#ff9050', topCol: '#ffcf5a', topFrom: 0.4, topTo: 0.98, outline: '#b8501e', case: '#fff0dc', caseDots: '#ff9a3c', border: '#fff4e6', topping: 'sunrise', particle: ['#ff9050', '#ffc27a', '#fff4e6', '#ffffff'] });
   K({ id: 'w3t3', tier: 3, world: 3, name: 'Cotton Candy Cupcake', title: 'The Fairy Floss Cloud Palace',
     lore: 'A two-tone swirl of pink and blue with a tuft of cotton candy, spun from the clouds above the Heights.',
     ingr: ['spun-cloud floss', 'a pink-and-blue swirl', 'a sprinkle of sugar'], hint: 'Spun from pink and blue clouds.',
@@ -3501,7 +3752,7 @@
   K({ id: 'rare_clover', tier: 2, world: 'rare', name: 'Lucky Clover Bite', title: "The Leprechaun's Lucky Bite",
     lore: 'A clover-green petit four in a golden case, with a four-leaf clover on top. Lucky in every way, including the points.',
     ingr: ['clover-green fondant', 'a four-leaf clover', 'a pot of luck'], hint: 'Rare – often seen in Candy Woods.',
-    fondant: '#3aa852', outline: '#1f6a32', case: '#ffd34d', caseDots: '#fff6c8', border: '#ffffff', topping: 'clover', chance: 1, boost: 1, particle: ['#3aa852', '#9fe07a', '#ffd34d', '#ffffff'] });
+    fondant: '#4cb83c', outline: '#2a6a22', case: '#ffd34d', caseDots: '#fff6c8', border: '#ffffff', topping: 'clover', chance: 1, boost: 1, particle: ['#4cb83c', '#9fe07a', '#ffd34d', '#ffffff'] });
   K({ id: 'rare_birthday', tier: 2, world: 'rare', name: 'Birthday Bite', title: "The Birthday Pixie's Surprise",
     lore: "A snow-white petit four in a party case of every colour, covered in confetti and carrying a little candle. It's always somebody's birthday somewhere.",
     ingr: ['confetti sponge', 'a little candle', 'a wish, again'], hint: 'Rare – it comes with a candle.',

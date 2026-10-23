@@ -653,14 +653,24 @@
       c.addColorStop(1, pal.cloud.light);
       ctx.fillStyle = c;
       ctx.fillRect(0, H * 0.62, W, H * 0.38);
-      // a few puffs
-      ctx.fillStyle = FC.rgba(pal.cloud.light, 0.9);
+      // a few puffs: the world's own painted cloud puffs (they were flat white ovals that looked like holes in the
+      // card); plain soft ovals only until the art has loaded
       const rng = FC.rng(77 + w);
-      for (let i = 0; i < 14; i++) {
-        const x = rng() * W, y = H * (0.6 + rng() * 0.4), r = 12 + rng() * 28;
-        ctx.beginPath();
-        ctx.ellipse(x, y, r * 1.6, r * 0.7, 0, 0, FC.TAU);
-        ctx.fill();
+      const set = S.ready(theme) ? S.imgs[theme] : null;
+      const puffs = [];
+      for (let i = 0; i < 14; i++) puffs.push({ x: rng() * W, y: H * (0.6 + rng() * 0.4), r: 12 + rng() * 28, k: i % 3 });
+      puffs.sort((a, b) => a.y - b.y);
+      for (const p of puffs) {
+        const img = set && set['puff' + p.k];
+        if (img && img.naturalWidth) {
+          const pw = p.r * 4.2, ph = (pw * img.naturalHeight) / img.naturalWidth;
+          ctx.drawImage(img, p.x - pw / 2, p.y + p.r * 0.45 - ph, pw, ph);
+        } else {
+          ctx.fillStyle = FC.rgba(pal.cloud.light, 0.9);
+          ctx.beginPath();
+          ctx.ellipse(p.x, p.y, p.r * 1.6, p.r * 0.7, 0, 0, FC.TAU);
+          ctx.fill();
+        }
       }
       // sparkles
       for (let i = 0; i < 18; i++) {

@@ -509,9 +509,60 @@
   };
 
   // ------------------------------------------------------------------
-  // rock face: smooth gradient, curved strata bands, rounded boulders
+  // rock face: smooth gradient, ledges of layered rock, pebbles sitting on the ledges
   // pathFn(ctx) draws the silhouette; arc(y) = curvature for strata
   // ------------------------------------------------------------------
+  // a pebble lodged in the rock: a whole rounded stone with its own light (top left), a darker underside
+  // and a soft shadow on the rock below it
+  function cliffPebble(ctx, x, y, s, pal, rot, k) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    const path = () => {
+      ctx.beginPath();
+      for (let i = 0; i <= 24; i++) {
+        const a = (i / 24) * TAU;
+        const rr = s * (1 + 0.1 * Math.sin(a * 2 + k) + 0.05 * Math.sin(a * 3 + k * 2.3));
+        const px = Math.cos(a) * rr * 1.18, py = Math.sin(a) * rr * 0.78;
+        if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+      }
+      ctx.closePath();
+    };
+    // the shadow it casts on the rock (light from the top left)
+    ctx.save();
+    ctx.filter = 'blur(' + Math.max(1, s * 0.3).toFixed(1) + 'px)';
+    ctx.translate(s * 0.22, s * 0.38);
+    path();
+    ctx.fillStyle = rgba(pal.deep, 0.55);
+    ctx.fill();
+    ctx.restore();
+    path();
+    // a cooler, greyer tone than the rock around it, so it reads as a stone and not as a lump of earth
+    const stone = mix(pal.light, '#d9d3e6', 0.45);
+    const g = ctx.createRadialGradient(-s * 0.5, -s * 0.45, s * 0.05, -s * 0.15, -s * 0.05, s * 1.4);
+    g.addColorStop(0, mix(stone, '#ffffff', 0.55));
+    g.addColorStop(0.42, stone);
+    g.addColorStop(1, mix(mix(pal.mid, '#9c93b4', 0.4), pal.dark, 0.25));
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, s * 0.13);
+    ctx.strokeStyle = rgba(pal.line, 0.75);
+    ctx.stroke();
+    ctx.save();
+    path();
+    ctx.clip();
+    ctx.beginPath();
+    ctx.ellipse(s * 0.35, s * 0.55, s * 1.3, s * 0.55, -0.15, 0, TAU);
+    ctx.fillStyle = rgba(pal.dark, 0.35);
+    ctx.fill();
+    ctx.restore();
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.42, -s * 0.36, s * 0.34, s * 0.14, -0.35, 0, TAU);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fill();
+    ctx.restore();
+  }
+
   G.rockFace = function (ctx, pathFn, bb, pal, seed, o) {
     o = o || {};
     const r = P.rng(seed);
@@ -527,25 +578,50 @@
     const vg = ctx.createLinearGradient(0, bb.y, 0, bb.y + bb.h);
     vg.addColorStop(0, rgba(pal.deep, 0)); vg.addColorStop(1, rgba(pal.deep, 0.55));
     ctx.fillStyle = vg; ctx.fillRect(bb.x - 10, bb.y, bb.w + 20, bb.h + 10);
-    // strata bands following the front curvature
+    // ledges of layered rock following the front curvature: each one a lit lip over a soft shadow, broken into
+    // pieces of different lengths that taper at their ends, so the layers read as rock and not as ruled lines
     const strata = o.strata || 5;
+    const rl = P.rng(seed + 77);
+    const curves = [];
     for (let k = 1; k <= strata; k++) {
       const off = (k / (strata + 1)) * bb.h * 0.85;
-      const curve = (t) => o.arc ? o.arc(t, off) : bb.y + off + Math.sin(t * Math.PI) * bb.h * 0.08;
-      ctx.beginPath();
-      for (let i = 0; i <= 40; i++) {
-        const t = i / 40;
-        const px = bb.x + t * bb.w, py = curve(t) + Math.sin(t * 9 + k) * bb.h * 0.006;
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      const curve = (t) => (o.arc ? o.arc(t, off) : bb.y + off + Math.sin(t * Math.PI) * bb.h * 0.08) + Math.sin(t * 9 + k) * bb.h * 0.006;
+      curves.push(curve);
+      const th = Math.max(3, bb.h * 0.03);
+      let t = -0.02 + rl() * 0.05;
+      while (t < 1) {
+        const len = 0.14 + rl() * 0.3, t1 = Math.min(1.02, t + len);
+        const w = th * (0.7 + rl() * 0.6);
+        // the shadow under the lip
+        ctx.beginPath();
+        for (let i = 0; i <= 24; i++) {
+          const u = i / 24, tt = t + (t1 - t) * u, px = bb.x + tt * bb.w;
+          const py = curve(tt) + w * 0.35;
+          if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+        }
+        for (let i = 24; i >= 0; i--) {
+          const u = i / 24, tt = t + (t1 - t) * u, px = bb.x + tt * bb.w;
+          ctx.lineTo(px, curve(tt) + w * 0.35 + w * 0.75 * Math.pow(Math.sin(u * Math.PI), 0.6));
+        }
+        ctx.closePath();
+        ctx.fillStyle = rgba(pal.deep, 0.3);
+        ctx.fill();
+        // the lit lip
+        ctx.beginPath();
+        for (let i = 0; i <= 24; i++) {
+          const u = i / 24, tt = t + (t1 - t) * u, px = bb.x + tt * bb.w;
+          const py = curve(tt) - w * 0.5 * Math.pow(Math.sin(u * Math.PI), 0.6);
+          if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+        }
+        for (let i = 24; i >= 0; i--) {
+          const u = i / 24, tt = t + (t1 - t) * u, px = bb.x + tt * bb.w;
+          ctx.lineTo(px, curve(tt) + w * 0.35 * Math.pow(Math.sin(u * Math.PI), 0.6));
+        }
+        ctx.closePath();
+        ctx.fillStyle = rgba(pal.hi, 0.36);
+        ctx.fill();
+        t = t1 + 0.01 + rl() * 0.05;
       }
-      ctx.lineWidth = Math.max(3, bb.h * 0.03);
-      ctx.strokeStyle = rgba(pal.hi, 0.32);
-      ctx.stroke();
-      ctx.translate(0, Math.max(2, bb.h * 0.018));
-      ctx.lineWidth = Math.max(1.5, bb.h * 0.008);
-      ctx.strokeStyle = rgba(pal.deep, 0.35);
-      ctx.stroke();
-      ctx.translate(0, -Math.max(2, bb.h * 0.018));
     }
     // gold veins through the rock (the marble cliffs of Rainbow Heights)
     if (pal.vein) {
@@ -564,26 +640,31 @@
         ctx.lineWidth = Math.max(0.6, bb.h * 0.0026); ctx.strokeStyle = rgba('#ffffff', 0.75); ctx.stroke();
       }
     }
-    // boulders
+    // pebbles: whole rounded stones resting on the ledges, alone or in twos and threes (they used to be flat
+    // half-domes that looked printed on); only where the rock is wide enough to hold them
     const nb = o.boulders == null ? 10 : o.boulders;
-    for (let i = 0; i < nb; i++) {
-      const t = 0.08 + r() * 0.84;
-      const px = bb.x + t * bb.w;
-      const py = bb.y + bb.h * (0.12 + r() * 0.6) + Math.sin(t * Math.PI) * bb.h * 0.08;
-      const s = bb.h * (0.025 + r() * 0.03);
-      ctx.beginPath();
-      ctx.moveTo(px - s * 1.4, py + s * 0.5);
-      ctx.bezierCurveTo(px - s * 1.5, py - s * 0.6, px - s * 0.2, py - s * 1.0, px + s * 0.6, py - s * 0.8);
-      ctx.bezierCurveTo(px + s * 1.4, py - s * 0.5, px + s * 1.5, py + s * 0.3, px + s * 1.2, py + s * 0.55);
-      ctx.closePath();
-      const bg = ctx.createLinearGradient(px - s, py - s, px + s, py + s);
-      bg.addColorStop(0, rgba(pal.hi, 0.55)); bg.addColorStop(0.6, rgba(pal.mid, 0.35)); bg.addColorStop(1, rgba(pal.dark, 0.35));
-      ctx.fillStyle = bg; ctx.fill();
-      ctx.lineWidth = Math.max(1, s * 0.1); ctx.strokeStyle = rgba(pal.deep, 0.35); ctx.stroke();
+    const rp = P.rng(seed + 91), placed = [];
+    for (let i = 0, tries = 0; i < nb && tries < nb * 16; tries++) {
+      const t = 0.08 + rp() * 0.84;
+      const k = Math.floor(rp() * strata);
+      const curve = curves[k];
+      const s = bb.h * (0.016 + rp() * 0.016);
+      const px = bb.x + t * bb.w, py = curve(t) - s * 0.62;
+      if (o.avoid && o.avoid.some((q) => px + s * 1.8 > q[0] && px - s * 1.8 < q[1])) continue; // not behind a waterfall
+      if (placed.some((q) => Math.hypot(q[0] - px, (q[1] - py) * 1.6) < (q[2] + s) * 2.4)) continue; // spread out
+      pathFn(ctx);
+      if (!ctx.isPointInPath(px - s * 2.4, py) || !ctx.isPointInPath(px + s * 2.4, py) || !ctx.isPointInPath(px, py + s * 3)) continue;
+      const n = 1 + Math.floor(rp() * 3);
+      const group = [[0, 0, 1]];
+      if (n > 1) group.push([s * (1.9 + rp() * 0.4), s * 0.22, 0.55 + rp() * 0.15]);
+      if (n > 2) group.push([-s * (1.5 + rp() * 0.4), s * 0.3, 0.45 + rp() * 0.15]);
+      group.sort((a, b) => a[2] - b[2]);
+      for (const q of group) cliffPebble(ctx, px + q[0], py + q[1] + s * (1 - q[2]) * 0.62, s * q[2], pal, (rp() - 0.5) * 0.3, rp() * 6);
+      placed.push([px, py, s]);
+      i++;
     }
     ctx.restore();
   };
-
   // ------------------------------------------------------------------
   // grass overhang scallops along an ellipse arc (a0..a1)
   // ------------------------------------------------------------------
@@ -628,13 +709,17 @@
       c.bezierCurveTo(x - w * 0.24, y + depth * 0.66, x - w * 0.5, y + depth * 0.4, x - w / 2, y);
       c.closePath();
     };
+    const nf = o.falls == null ? 1 : o.falls;
+    const fallX = (i) => x + w * (i === 0 ? 0.2 : i === 1 ? -0.26 : 0.05);
+    const avoid = [];
+    for (let i = 0; i < nf; i++) avoid.push([fallX(i) - w * 0.045, fallX(i) + w * 0.045]);
     G.rockFace(ctx, path, { x: x - w / 2, y: y, w, h: depth }, T.rock, seed + 1, {
-      strata: 3, boulders: 4, outline: o.outline, lw: Math.max(2, w * 0.006),
+      strata: 3, boulders: 4, outline: o.outline, lw: Math.max(2, w * 0.006), avoid,
       arc: (t, off) => y + ry * Math.sin(t * Math.PI) * 0.9 + off * 0.8,
     });
     const falls = [];
-    for (let i = 0; i < (o.falls == null ? 1 : o.falls); i++) {
-      const fx = x + w * (i === 0 ? 0.2 : i === 1 ? -0.26 : 0.05);
+    for (let i = 0; i < nf; i++) {
+      const fx = fallX(i);
       const fy = y + ry * Math.sin(Math.acos(P.clamp((fx - x) / (w / 2), -1, 1))) - 3;
       const f = G.fall(ctx, fx, fy, w * 0.05, w * 0.075, depth * (0.9 + r() * 0.5), T.fall, seed + 10 + i, { fade: 0.55 });
       falls.push(f);
@@ -979,7 +1064,7 @@
         c.bezierCurveTo(cx + PR * 0.16, sy - PR * 0.16, cx + PR * 0.28, sy - PR * 0.08, cx + PR * 0.27, by - RO * K + PR * 0.04);
         c.closePath();
       };
-      G.rockFace(b, rpath, { x: cx - PR * 0.27, y: sy - PR * 0.17, w: PR * 0.54, h: PR * 0.24 }, T.rock, seed + 2, { strata: 2, boulders: 2, lw: 4 });
+      G.rockFace(b, rpath, { x: cx - PR * 0.27, y: sy - PR * 0.17, w: PR * 0.54, h: PR * 0.24 }, T.rock, seed + 2, { strata: 2, boulders: 2, lw: 4, avoid: [[cx - PR * 0.1, cx + PR * 0.1]] });
       b.beginPath(); b.ellipse(cx, sy, PR * 0.08, PR * 0.06, 0, Math.PI, 0); b.lineTo(cx + PR * 0.08, sy + 6); b.lineTo(cx - PR * 0.08, sy + 6); b.closePath();
       b.fillStyle = mix(T.rock.deep, '#1a1030', 0.35); b.fill();
       meta.springTop = sy;
@@ -1014,7 +1099,9 @@
         c.closePath();
       };
       G.rockFace(b, path, { x: cx - RO, y: by + RO * K * 0.2, w: RO * 2, h: cliffBottom - by - RO * K * 0.2 }, T.rock, seed + 6, {
-        strata: 5, boulders: 7, lw: 5,
+        strata: 5, boulders: 10, lw: 5,
+        // no pebbles behind the waterfalls
+        avoid: [[cx - PR * 0.17, cx + PR * 0.17]].concat([-1, 1].map((sd) => { const fx = cx + Math.cos(Math.PI / 2 + sd * 0.74) * RO * 0.97; return [fx - PR * 0.055, fx + PR * 0.055]; })),
         arc: (t, off) => by + RO * K * Math.sin(t * Math.PI) + off * 0.85 - RO * K * 0.15,
       });
       // hanging vines with little blossoms (red ivy in autumn, pastel garlands in the sky kingdom)
